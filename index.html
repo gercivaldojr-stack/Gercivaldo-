@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Conversor DOCX para Markdown - Otimizado para Juridico</title>
+    <title>Conversor DOCX para Markdown - Otimizado para Jurídico</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -265,14 +265,14 @@
     <div class="container">
         <header>
             <h1>Conversor DOCX para Markdown</h1>
-            <p class="subtitle">Otimizado para documentos juridicos e textos extensos</p>
+            <p class="subtitle">Otimizado para documentos jurídicos e textos extensos</p>
         </header>
 
         <section class="upload-section" id="uploadSection">
             <div class="upload-content">
                 <div class="upload-icon">&#128196;</div>
                 <p class="upload-text">Arraste e solte seu arquivo DOCX aqui ou clique para selecionar</p>
-                <p class="upload-text" style="font-size: 0.9rem; color: #999;">Suporta arquivos grandes (testado com 100MB+)</p>
+                <p class="upload-text" style="font-size: 0.9rem; color: #999;">Suporta arquivos grandes (testado até 100MB+)</p>
                 <input type="file" id="fileInput" accept=".docx" style="display: none;">
                 <button class="btn-primary" id="selectBtn">Selecionar Arquivo</button>
             </div>
@@ -286,7 +286,7 @@
         <div class="error-message" id="errorMessage"></div>
 
         <div class="warning-list" id="warningList">
-            <strong>Avisos da conversao:</strong>
+            <strong>Avisos da conversão:</strong>
             <ul id="warningItems"></ul>
         </div>
 
@@ -297,7 +297,7 @@
         </div>
 
         <div class="progress-section" id="progressSection">
-            <div class="progress-text" id="progressText">Preparando conversao...</div>
+            <div class="progress-text" id="progressText">Preparando conversão...</div>
             <div class="progress-bar">
                 <div class="progress-fill" id="progressFill"></div>
             </div>
@@ -306,11 +306,11 @@
 
         <section class="preview-section">
             <ul class="preview-tabs" id="previewTabs">
-                <li class="active" data-tab="markdown">Markdown (Codigo)</li>
-                <li data-tab="rendered">Visualizacao Renderizada</li>
+                <li class="active" data-tab="markdown">Markdown (Código)</li>
+                <li data-tab="rendered">Visualização Renderizada</li>
             </ul>
             <div class="tab-content active" id="markdownTab">
-                <textarea id="markdown-preview" placeholder="Seu Markdown aparecera aqui apos a conversao..."></textarea>
+                <textarea id="markdown-preview" placeholder="Seu Markdown aparecerá aqui após a conversão..."></textarea>
             </div>
             <div class="tab-content" id="renderedTab">
                 <div id="rendered-preview"></div>
@@ -325,11 +325,11 @@
         </div>
 
         <div class="legal-tip">
-            <strong>Dica para documentos juridicos:</strong> Este conversor preserva a estrutura hierarquica (Capitulos, Secoes, Artigos) e formata automaticamente numeracao legal como headers Markdown.
+            <strong>Dica para documentos jurídicos:</strong> Este conversor preserva a estrutura hierárquica (Capítulos, Seções, Artigos) e formata automaticamente numeração legal como headers Markdown.
         </div>
 
         <footer>
-            <p>Conversor DOCX &rarr; Markdown &bull; Versao 2.0</p>
+            <p>Conversor DOCX &rarr; Markdown &bull; Versão 2.0</p>
         </footer>
     </div>
 
@@ -337,7 +337,7 @@
         (function() {
             'use strict';
 
-            // Estado global da aplicacao
+            // Estado global da aplicação
             var state = {
                 currentMarkdown: '',
                 currentFileName: '',
@@ -345,7 +345,7 @@
                 markedLoaded: false
             };
 
-            // Carregar script externo com tratamento de erro
+            // Carregar script externo com tratamento de erros
             function loadScript(src) {
                 return new Promise(function(resolve, reject) {
                     var script = document.createElement('script');
@@ -358,7 +358,7 @@
                 });
             }
 
-            // Elementos do DOM (cacheados)
+            // Elementos do DOM (em cache)
             var dom = {};
 
             function cacheDom() {
@@ -422,7 +422,7 @@
                 return div.innerHTML;
             }
 
-            // Configurar Turndown com regras otimizadas para documentos juridicos
+            // Configurar Turndown com regras otimizadas para documentos jurídicos
             function configureTurndown() {
                 var service = new TurndownService({
                     headingStyle: 'atx',
@@ -435,7 +435,7 @@
                     }
                 });
 
-                // Preservar tabelas em HTML quando nao puderem ser convertidas
+                // Preservar tabelas em HTML quando não puderem ser convertidas
                 service.addRule('tables', {
                     filter: ['table'],
                     replacement: function(content, node) {
@@ -474,7 +474,7 @@
                     }
                 });
 
-                // Regra para preservar quebras de linha dentro de paragrafos
+                // Regra para preservar quebras de linha dentro de parágrafos
                 service.addRule('lineBreaks', {
                     filter: ['br'],
                     replacement: function() {
@@ -485,28 +485,28 @@
                 return service;
             }
 
-            // Pos-processamento de Markdown para documentos juridicos
+            // Pós-processamento de Markdown para documentos jurídicos
             function postProcessLegalMarkdown(md) {
                 return md
                     // Normalizar quebras de linha excessivas
                     .replace(/\n{3,}/g, '\n\n')
-                    // Promover artigos para heading nivel 3 quando nao sao headings
+                    // Promover artigos para heading nível 3 quando não são headings
                     .replace(/^(Art\.\s*\d+[^\n]*)/gm, '### $1')
                     // Evitar headings duplicados (### ### ...)
                     .replace(/^(#{1,6})\s+(#{1,6}\s+)/gm, '$1 ')
-                    // Formatar paragrafos com simbolo de secao
+                    // Formatar parágrafos com símbolo de seção
                     .replace(/^(\u00a7\s*\d+[^\n]*)/gm, '#### $1')
                     .replace(/^(#{1,6})\s+(#{1,6}\s+)/gm, '$1 ')
                     // Destacar incisos com romano
                     .replace(/^(\s*)(I{1,3}|IV|VI{0,3}|IX|XI{0,3})\s*[-\u2013\u2014]\s*/gm, '$1**$2** - ')
-                    // Melhorar alineas
+                    // Melhorar alíneas
                     .replace(/^(\s*)([a-z])\)\s*/gm, '$1- **$2)** ')
-                    // Limpar espacos extras em headings
+                    // Limpar espaços extras em headings
                     .replace(/^(#+)\s{2,}/gm, '$1 ')
                     .trim();
             }
 
-            // Renderizar markdown para HTML (fallback caso marked.js nao carregue)
+            // Renderizar markdown para HTML (fallback caso marked.js não carregue)
             function renderMarkdownFallback(text) {
                 if (!text) return '';
                 var html = escapeHtml(text)
@@ -546,7 +546,7 @@
                 var validType = file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
                 var validExt = file.name.toLowerCase().endsWith('.docx');
                 if (!validType && !validExt) {
-                    showError('Arquivo invalido. Por favor selecione um arquivo .docx');
+                    showError('Arquivo inválido. Por favor selecione um arquivo .docx');
                     state.isConverting = false;
                     return;
                 }
@@ -555,7 +555,7 @@
                 dom['warningList'].style.display = 'none';
                 dom['conversionStats'].style.display = 'none';
 
-                // Mostrar informacoes do arquivo
+                // Mostrar informações do arquivo
                 state.currentFileName = file.name;
                 dom['fileName'].textContent = file.name;
                 var sizeInMB = (file.size / (1024 * 1024)).toFixed(2);
@@ -568,13 +568,13 @@
                 dom['actionButtons'].style.display = 'none';
                 state.currentMarkdown = '';
 
-                // Desabilitar botao durante conversao
+                // Desabilitar botão durante conversão
                 dom['selectBtn'].disabled = true;
                 dom['selectBtn'].textContent = 'Convertendo...';
 
                 try {
                     dom['progressSection'].style.display = 'block';
-                    updateProgress(10, 'Lendo arquivo...');
+                    updateProgress(10, 'Lendo o arquivo...');
 
                     var arrayBuffer = await file.arrayBuffer();
                     updateProgress(30, 'Convertendo DOCX para HTML...');
@@ -601,7 +601,7 @@
 
                     var html = result.value;
                     if (!html || html.trim().length === 0) {
-                        showError('O documento parece estar vazio ou nao pode ser lido.');
+                        showError('O documento parece estar vazio ou não pode ser lido.');
                         state.isConverting = false;
                         dom['selectBtn'].disabled = false;
                         dom['selectBtn'].textContent = 'Selecionar Arquivo';
@@ -614,9 +614,9 @@
                     // Converter HTML para Markdown
                     var mdContent = window.turndownService.turndown(html);
 
-                    updateProgress(80, 'Aplicando pos-processamento juridico...');
+                    updateProgress(80, 'Aplicando pós-processamento jurídico...');
 
-                    // Pos-processamento
+                    // Pós-processamento
                     var processedMarkdown = postProcessLegalMarkdown(mdContent);
                     state.currentMarkdown = processedMarkdown;
 
@@ -628,15 +628,15 @@
                     var lineCount = processedMarkdown.split('\n').length;
                     showStats(processedMarkdown.length, lineCount, elapsed);
 
-                    updateProgress(100, 'Conversao concluida!');
+                    updateProgress(100, 'Conversão concluída!');
 
                     setTimeout(function() {
                         dom['actionButtons'].style.display = 'flex';
                     }, 300);
 
                 } catch (error) {
-                    console.error('Erro na conversao:', error);
-                    showError('Erro na conversao: ' + (error.message || 'Verifique se o arquivo nao esta corrompido.'));
+                    console.error('Erro na conversão:', error);
+                    showError('Erro na conversão: ' + (error.message || 'Verifique se o arquivo não está corrompido.'));
                     dom['progressSection'].style.display = 'none';
                 } finally {
                     state.isConverting = false;
@@ -684,7 +684,7 @@
                     if (file) processFile(file);
                 });
 
-                // Clique na area de upload tambem abre seletor
+                // Clique na área de upload também abre seletor
                 uploadSection.addEventListener('click', function(e) {
                     if (e.target === dom['selectBtn'] || e.target === dom['fileInput']) return;
                     dom['fileInput'].click();
@@ -730,7 +730,7 @@
                             dom['copyBtn'].textContent = 'Copiar Markdown';
                         }, 2000);
                     } catch (err) {
-                        // Fallback para navegadores sem Clipboard API
+                        // Fallback para navegadores sem a Clipboard API
                         dom['markdown-preview'].select();
                         document.execCommand('copy');
                         dom['copyBtn'].textContent = 'Copiado!';
@@ -791,12 +791,12 @@
                 URL.revokeObjectURL(url);
             }
 
-            // Inicializacao
+            // Inicialização
             async function initApp() {
                 cacheDom();
 
                 try {
-                    // Carregar dependencias em paralelo
+                    // Carregar dependências em paralelo
                     await Promise.all([
                         loadScript('https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.4.22/mammoth.browser.min.js'),
                         loadScript('https://cdn.jsdelivr.net/npm/turndown/dist/turndown.js')
@@ -804,7 +804,7 @@
 
                     window.turndownService = configureTurndown();
 
-                    // Carregar marked.js para renderizacao rica (nao-bloqueante)
+                    // Carregar marked.js para renderização rica (não-bloqueante)
                     loadScript('https://cdn.jsdelivr.net/npm/marked/marked.min.js')
                         .then(function() {
                             state.markedLoaded = true;
@@ -813,14 +813,14 @@
                             }
                         })
                         .catch(function() {
-                            console.warn('marked.js nao carregou; usando renderizador fallback.');
+                            console.warn('marked.js não carregou; usando renderizador fallback.');
                         });
 
                     initEvents();
 
                 } catch (error) {
                     console.error('Erro ao carregar bibliotecas:', error);
-                    showError('Erro ao inicializar. Verifique sua conexao e recarregue a pagina.');
+                    showError('Erro ao inicializar. Verifique sua conexão e recarregue a página.');
                 }
             }
 
