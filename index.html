@@ -1,0 +1,831 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Conversor DOCX para Markdown - Otimizado para Juridico</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        header {
+            background: linear-gradient(135deg, #1e3c72, #2a5298);
+            color: white;
+            padding: 30px;
+            text-align: center;
+            border-radius: 10px;
+            margin-bottom: 30px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        h1 { font-size: 2.2rem; margin-bottom: 10px; }
+        .subtitle { font-size: 1.1rem; opacity: 0.9; }
+        .upload-section {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 30px;
+            border: 2px dashed #ccc;
+            transition: all 0.3s ease;
+        }
+        .upload-section.dragover {
+            border-color: #2a5298;
+            background-color: #f0f8ff;
+            transform: scale(1.01);
+        }
+        .upload-content {
+            text-align: center;
+            padding: 40px 20px;
+        }
+        .upload-icon {
+            font-size: 50px;
+            color: #2a5298;
+            margin-bottom: 20px;
+        }
+        .upload-text {
+            color: #666;
+            margin-bottom: 15px;
+        }
+        .btn-primary {
+            background: #2a5298;
+            color: white;
+            border: none;
+            padding: 12px 25px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 1rem;
+            transition: background 0.3s;
+        }
+        .btn-primary:hover { background: #1e3c72; }
+        .btn-primary:disabled, .btn-secondary:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            opacity: 0.6;
+        }
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-left: 10px;
+            transition: background 0.3s;
+        }
+        .btn-secondary:hover { background: #5a6268; }
+        .progress-section {
+            display: none;
+            margin-bottom: 20px;
+        }
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: #e9ecef;
+            border-radius: 4px;
+            overflow: hidden;
+            margin: 10px 0;
+        }
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #28a745, #20c997);
+            width: 0;
+            transition: width 0.3s ease;
+            border-radius: 4px;
+        }
+        .progress-text {
+            text-align: center;
+            font-size: 0.9rem;
+            color: #666;
+        }
+        .preview-section {
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        .preview-tabs {
+            display: flex;
+            background: #f8f9fa;
+            padding: 0;
+            margin: 0;
+            list-style: none;
+            border-bottom: 1px solid #dee2e6;
+        }
+        .preview-tabs li {
+            flex: 1;
+            text-align: center;
+            padding: 15px 0;
+            cursor: pointer;
+            transition: all 0.3s;
+            border-bottom: 3px solid transparent;
+            user-select: none;
+        }
+        .preview-tabs li.active {
+            background: white;
+            color: #2a5298;
+            border-bottom-color: #2a5298;
+            font-weight: 600;
+        }
+        .preview-tabs li:hover:not(.active) {
+            background: #e9ecef;
+        }
+        .tab-content {
+            display: none;
+            padding: 25px;
+        }
+        .tab-content.active {
+            display: block;
+        }
+        #markdown-preview {
+            width: 100%;
+            height: 500px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            padding: 15px;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 14px;
+            line-height: 1.6;
+            background: #f8f9fa;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            resize: vertical;
+        }
+        #rendered-preview {
+            width: 100%;
+            min-height: 500px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            padding: 15px 25px;
+            overflow-y: auto;
+            background: white;
+        }
+        #rendered-preview h1 { font-size: 1.8rem; margin: 1rem 0 0.5rem; border-bottom: 2px solid #eee; padding-bottom: 0.3rem; }
+        #rendered-preview h2 { font-size: 1.5rem; margin: 0.8rem 0 0.4rem; border-bottom: 1px solid #eee; padding-bottom: 0.2rem; }
+        #rendered-preview h3 { font-size: 1.3rem; margin: 0.7rem 0 0.3rem; }
+        #rendered-preview h4 { font-size: 1.1rem; margin: 0.6rem 0 0.3rem; }
+        #rendered-preview p { margin: 0.5rem 0; }
+        #rendered-preview blockquote { border-left: 4px solid #2a5298; padding: 0.5rem 1rem; margin: 0.5rem 0; background: #f8f9fa; }
+        #rendered-preview ul, #rendered-preview ol { padding-left: 2rem; margin: 0.5rem 0; }
+        #rendered-preview li { margin: 0.2rem 0; }
+        #rendered-preview strong { color: #1e3c72; }
+        #rendered-preview table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+        #rendered-preview th, #rendered-preview td { border: 1px solid #ddd; padding: 8px 12px; text-align: left; }
+        #rendered-preview th { background: #f0f0f0; font-weight: 600; }
+        .action-buttons {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            margin-top: 20px;
+            padding: 20px 0;
+            border-top: 1px solid #eee;
+        }
+        .file-info {
+            background: #e3f2fd;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 15px;
+            font-size: 0.9rem;
+            color: #0d47a1;
+            display: none;
+        }
+        .conversion-stats {
+            background: #e8f5e9;
+            padding: 12px 15px;
+            border-radius: 5px;
+            margin-bottom: 15px;
+            font-size: 0.85rem;
+            color: #2e7d32;
+            display: none;
+        }
+        .conversion-stats span {
+            margin-right: 20px;
+        }
+        .legal-tip {
+            background: #fff3e0;
+            border-left: 4px solid #ff9800;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 0 5px 5px 0;
+            font-size: 0.9rem;
+        }
+        .error-message {
+            background: #ffebee;
+            border-left: 4px solid #f44336;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 0 5px 5px 0;
+            font-size: 0.9rem;
+            color: #c62828;
+            display: none;
+        }
+        .warning-list {
+            background: #fff8e1;
+            border-left: 4px solid #ffc107;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 0 5px 5px 0;
+            font-size: 0.85rem;
+            color: #f57f17;
+            display: none;
+            max-height: 150px;
+            overflow-y: auto;
+        }
+        .warning-list ul {
+            margin: 5px 0 0 20px;
+        }
+        footer {
+            text-align: center;
+            padding: 20px;
+            color: #666;
+            font-size: 0.9rem;
+            margin-top: 30px;
+        }
+        @media (max-width: 768px) {
+            .container { padding: 15px; }
+            h1 { font-size: 1.8rem; }
+            .action-buttons { flex-direction: column; align-items: center; }
+            .action-buttons button { width: 100%; margin-left: 0; }
+            .btn-secondary { margin-left: 0 !important; }
+            .conversion-stats { display: flex; flex-direction: column; gap: 5px; }
+            .conversion-stats span { margin-right: 0; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Conversor DOCX para Markdown</h1>
+            <p class="subtitle">Otimizado para documentos juridicos e textos extensos</p>
+        </header>
+
+        <section class="upload-section" id="uploadSection">
+            <div class="upload-content">
+                <div class="upload-icon">&#128196;</div>
+                <p class="upload-text">Arraste e solte seu arquivo DOCX aqui ou clique para selecionar</p>
+                <p class="upload-text" style="font-size: 0.9rem; color: #999;">Suporta arquivos grandes (testado com 100MB+)</p>
+                <input type="file" id="fileInput" accept=".docx" style="display: none;">
+                <button class="btn-primary" id="selectBtn">Selecionar Arquivo</button>
+            </div>
+        </section>
+
+        <div class="file-info" id="fileInfo">
+            <strong>Arquivo:</strong> <span id="fileName"></span>
+            <span id="fileSize"></span>
+        </div>
+
+        <div class="error-message" id="errorMessage"></div>
+
+        <div class="warning-list" id="warningList">
+            <strong>Avisos da conversao:</strong>
+            <ul id="warningItems"></ul>
+        </div>
+
+        <div class="conversion-stats" id="conversionStats">
+            <span id="statChars"></span>
+            <span id="statLines"></span>
+            <span id="statTime"></span>
+        </div>
+
+        <div class="progress-section" id="progressSection">
+            <div class="progress-text" id="progressText">Preparando conversao...</div>
+            <div class="progress-bar">
+                <div class="progress-fill" id="progressFill"></div>
+            </div>
+            <div class="progress-text" id="progressPercent">0%</div>
+        </div>
+
+        <section class="preview-section">
+            <ul class="preview-tabs" id="previewTabs">
+                <li class="active" data-tab="markdown">Markdown (Codigo)</li>
+                <li data-tab="rendered">Visualizacao Renderizada</li>
+            </ul>
+            <div class="tab-content active" id="markdownTab">
+                <textarea id="markdown-preview" placeholder="Seu Markdown aparecera aqui apos a conversao..."></textarea>
+            </div>
+            <div class="tab-content" id="renderedTab">
+                <div id="rendered-preview"></div>
+            </div>
+        </section>
+
+        <div class="action-buttons" id="actionButtons" style="display: none;">
+            <button class="btn-primary" id="copyBtn">Copiar Markdown</button>
+            <button class="btn-secondary" id="downloadBtn">Baixar .md</button>
+            <button class="btn-secondary" id="downloadHtmlBtn">Baixar .html</button>
+            <button class="btn-secondary" id="clearBtn">Limpar</button>
+        </div>
+
+        <div class="legal-tip">
+            <strong>Dica para documentos juridicos:</strong> Este conversor preserva a estrutura hierarquica (Capitulos, Secoes, Artigos) e formata automaticamente numeracao legal como headers Markdown.
+        </div>
+
+        <footer>
+            <p>Conversor DOCX &rarr; Markdown &bull; Versao 2.0</p>
+        </footer>
+    </div>
+
+    <script>
+        (function() {
+            'use strict';
+
+            // Estado global da aplicacao
+            var state = {
+                currentMarkdown: '',
+                currentFileName: '',
+                isConverting: false,
+                markedLoaded: false
+            };
+
+            // Carregar script externo com tratamento de erro
+            function loadScript(src) {
+                return new Promise(function(resolve, reject) {
+                    var script = document.createElement('script');
+                    script.src = src;
+                    script.onload = resolve;
+                    script.onerror = function() {
+                        reject(new Error('Falha ao carregar: ' + src));
+                    };
+                    document.head.appendChild(script);
+                });
+            }
+
+            // Elementos do DOM (cacheados)
+            var dom = {};
+
+            function cacheDom() {
+                var ids = [
+                    'uploadSection', 'fileInput', 'selectBtn', 'fileInfo',
+                    'fileName', 'fileSize', 'progressSection', 'progressText',
+                    'progressFill', 'progressPercent', 'markdown-preview',
+                    'rendered-preview', 'actionButtons', 'copyBtn', 'downloadBtn',
+                    'downloadHtmlBtn', 'clearBtn', 'previewTabs', 'errorMessage',
+                    'warningList', 'warningItems', 'conversionStats',
+                    'statChars', 'statLines', 'statTime'
+                ];
+                ids.forEach(function(id) {
+                    dom[id] = document.getElementById(id);
+                });
+                dom.tabContents = document.querySelectorAll('.tab-content');
+            }
+
+            function updateProgress(percent, text) {
+                dom['progressFill'].style.width = percent + '%';
+                dom['progressPercent'].textContent = percent + '%';
+                if (text) {
+                    dom['progressText'].textContent = text;
+                }
+            }
+
+            function showError(message) {
+                dom['errorMessage'].textContent = message;
+                dom['errorMessage'].style.display = 'block';
+            }
+
+            function hideError() {
+                dom['errorMessage'].style.display = 'none';
+            }
+
+            function showWarnings(messages) {
+                if (!messages || messages.length === 0) {
+                    dom['warningList'].style.display = 'none';
+                    return;
+                }
+                dom['warningItems'].innerHTML = messages
+                    .slice(0, 20)
+                    .map(function(m) { return '<li>' + escapeHtml(m.message || String(m)) + '</li>'; })
+                    .join('');
+                if (messages.length > 20) {
+                    dom['warningItems'].innerHTML += '<li>... e mais ' + (messages.length - 20) + ' avisos</li>';
+                }
+                dom['warningList'].style.display = 'block';
+            }
+
+            function showStats(charCount, lineCount, timeMs) {
+                dom['statChars'].textContent = 'Caracteres: ' + charCount.toLocaleString('pt-BR');
+                dom['statLines'].textContent = 'Linhas: ' + lineCount.toLocaleString('pt-BR');
+                dom['statTime'].textContent = 'Tempo: ' + (timeMs / 1000).toFixed(2) + 's';
+                dom['conversionStats'].style.display = 'block';
+            }
+
+            function escapeHtml(text) {
+                var div = document.createElement('div');
+                div.textContent = text;
+                return div.innerHTML;
+            }
+
+            // Configurar Turndown com regras otimizadas para documentos juridicos
+            function configureTurndown() {
+                var service = new TurndownService({
+                    headingStyle: 'atx',
+                    codeBlockStyle: 'fenced',
+                    bulletListMarker: '-',
+                    emDelimiter: '*',
+                    strongDelimiter: '**',
+                    blankReplacement: function(content, node) {
+                        return node.nodeName === 'P' ? '\n\n' : '\n';
+                    }
+                });
+
+                // Preservar tabelas em HTML quando nao puderem ser convertidas
+                service.addRule('tables', {
+                    filter: ['table'],
+                    replacement: function(content, node) {
+                        // Tentar converter tabela para markdown
+                        var rows = node.querySelectorAll('tr');
+                        if (rows.length === 0) return content;
+
+                        var mdRows = [];
+                        var maxCols = 0;
+
+                        rows.forEach(function(row) {
+                            var cells = row.querySelectorAll('td, th');
+                            var cellTexts = [];
+                            cells.forEach(function(cell) {
+                                cellTexts.push(cell.textContent.trim().replace(/\|/g, '\\|'));
+                            });
+                            if (cellTexts.length > maxCols) maxCols = cellTexts.length;
+                            mdRows.push(cellTexts);
+                        });
+
+                        if (maxCols === 0) return content;
+
+                        // Normalizar colunas
+                        mdRows.forEach(function(row) {
+                            while (row.length < maxCols) row.push('');
+                        });
+
+                        var lines = [];
+                        lines.push('| ' + mdRows[0].join(' | ') + ' |');
+                        lines.push('| ' + mdRows[0].map(function() { return '---'; }).join(' | ') + ' |');
+                        for (var i = 1; i < mdRows.length; i++) {
+                            lines.push('| ' + mdRows[i].join(' | ') + ' |');
+                        }
+
+                        return '\n\n' + lines.join('\n') + '\n\n';
+                    }
+                });
+
+                // Regra para preservar quebras de linha dentro de paragrafos
+                service.addRule('lineBreaks', {
+                    filter: ['br'],
+                    replacement: function() {
+                        return '  \n';
+                    }
+                });
+
+                return service;
+            }
+
+            // Pos-processamento de Markdown para documentos juridicos
+            function postProcessLegalMarkdown(md) {
+                return md
+                    // Normalizar quebras de linha excessivas
+                    .replace(/\n{3,}/g, '\n\n')
+                    // Promover artigos para heading nivel 3 quando nao sao headings
+                    .replace(/^(Art\.\s*\d+[^\n]*)/gm, '### $1')
+                    // Evitar headings duplicados (### ### ...)
+                    .replace(/^(#{1,6})\s+(#{1,6}\s+)/gm, '$1 ')
+                    // Formatar paragrafos com simbolo de secao
+                    .replace(/^(\u00a7\s*\d+[^\n]*)/gm, '#### $1')
+                    .replace(/^(#{1,6})\s+(#{1,6}\s+)/gm, '$1 ')
+                    // Destacar incisos com romano
+                    .replace(/^(\s*)(I{1,3}|IV|VI{0,3}|IX|XI{0,3})\s*[-\u2013\u2014]\s*/gm, '$1**$2** - ')
+                    // Melhorar alineas
+                    .replace(/^(\s*)([a-z])\)\s*/gm, '$1- **$2)** ')
+                    // Limpar espacos extras em headings
+                    .replace(/^(#+)\s{2,}/gm, '$1 ')
+                    .trim();
+            }
+
+            // Renderizar markdown para HTML (fallback caso marked.js nao carregue)
+            function renderMarkdownFallback(text) {
+                if (!text) return '';
+                var html = escapeHtml(text)
+                    .replace(/^###### (.*)$/gm, '<h6>$1</h6>')
+                    .replace(/^##### (.*)$/gm, '<h5>$1</h5>')
+                    .replace(/^#### (.*)$/gm, '<h4>$1</h4>')
+                    .replace(/^### (.*)$/gm, '<h3>$1</h3>')
+                    .replace(/^## (.*)$/gm, '<h2>$1</h2>')
+                    .replace(/^# (.*)$/gm, '<h1>$1</h1>')
+                    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+                    .replace(/\*(.+?)\*/g, '<em>$1</em>')
+                    .replace(/`(.+?)`/g, '<code>$1</code>')
+                    .replace(/^&gt;\s*(.*)$/gm, '<blockquote><p>$1</p></blockquote>')
+                    .replace(/^-\s+(.*)$/gm, '<li>$1</li>')
+                    .replace(/^(\d+)\.\s+(.*)$/gm, '<li>$2</li>')
+                    .replace(/\n\n/g, '</p><p>')
+                    .replace(/^([^<].+)$/gm, '<p>$1</p>');
+                return '<div>' + html + '</div>';
+            }
+
+            function renderMarkdownToHtml(text) {
+                if (!text) return '';
+                if (state.markedLoaded && window.marked) {
+                    return marked.parse(text);
+                }
+                return renderMarkdownFallback(text);
+            }
+
+            // Processar arquivo DOCX
+            async function processFile(file) {
+                if (state.isConverting) return;
+                state.isConverting = true;
+
+                var startTime = performance.now();
+
+                // Validar arquivo
+                var validType = file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+                var validExt = file.name.toLowerCase().endsWith('.docx');
+                if (!validType && !validExt) {
+                    showError('Arquivo invalido. Por favor selecione um arquivo .docx');
+                    state.isConverting = false;
+                    return;
+                }
+
+                hideError();
+                dom['warningList'].style.display = 'none';
+                dom['conversionStats'].style.display = 'none';
+
+                // Mostrar informacoes do arquivo
+                state.currentFileName = file.name;
+                dom['fileName'].textContent = file.name;
+                var sizeInMB = (file.size / (1024 * 1024)).toFixed(2);
+                dom['fileSize'].textContent = ' (' + sizeInMB + ' MB)';
+                dom['fileInfo'].style.display = 'block';
+
+                // Resetar interface
+                dom['markdown-preview'].value = '';
+                dom['rendered-preview'].innerHTML = '';
+                dom['actionButtons'].style.display = 'none';
+                state.currentMarkdown = '';
+
+                // Desabilitar botao durante conversao
+                dom['selectBtn'].disabled = true;
+                dom['selectBtn'].textContent = 'Convertendo...';
+
+                try {
+                    dom['progressSection'].style.display = 'block';
+                    updateProgress(10, 'Lendo arquivo...');
+
+                    var arrayBuffer = await file.arrayBuffer();
+                    updateProgress(30, 'Convertendo DOCX para HTML...');
+
+                    // Converter DOCX para HTML com Mammoth (preservar estilos importantes)
+                    var result = await mammoth.convertToHtml(
+                        { arrayBuffer: arrayBuffer },
+                        {
+                            styleMap: [
+                                "p[style-name='Title'] => h1:fresh",
+                                "p[style-name='Heading 1'] => h1:fresh",
+                                "p[style-name='Heading 2'] => h2:fresh",
+                                "p[style-name='Heading 3'] => h3:fresh",
+                                "p[style-name='Heading 4'] => h4:fresh",
+                                "p[style-name='Subtitle'] => h2:fresh",
+                                "b => strong",
+                                "i => em",
+                                "u => em"
+                            ]
+                        }
+                    );
+
+                    showWarnings(result.messages);
+
+                    var html = result.value;
+                    if (!html || html.trim().length === 0) {
+                        showError('O documento parece estar vazio ou nao pode ser lido.');
+                        state.isConverting = false;
+                        dom['selectBtn'].disabled = false;
+                        dom['selectBtn'].textContent = 'Selecionar Arquivo';
+                        dom['progressSection'].style.display = 'none';
+                        return;
+                    }
+
+                    updateProgress(60, 'Convertendo HTML para Markdown...');
+
+                    // Converter HTML para Markdown
+                    var mdContent = window.turndownService.turndown(html);
+
+                    updateProgress(80, 'Aplicando pos-processamento juridico...');
+
+                    // Pos-processamento
+                    var processedMarkdown = postProcessLegalMarkdown(mdContent);
+                    state.currentMarkdown = processedMarkdown;
+
+                    // Atualizar previews
+                    dom['markdown-preview'].value = processedMarkdown;
+                    dom['rendered-preview'].innerHTML = renderMarkdownToHtml(processedMarkdown);
+
+                    var elapsed = performance.now() - startTime;
+                    var lineCount = processedMarkdown.split('\n').length;
+                    showStats(processedMarkdown.length, lineCount, elapsed);
+
+                    updateProgress(100, 'Conversao concluida!');
+
+                    setTimeout(function() {
+                        dom['actionButtons'].style.display = 'flex';
+                    }, 300);
+
+                } catch (error) {
+                    console.error('Erro na conversao:', error);
+                    showError('Erro na conversao: ' + (error.message || 'Verifique se o arquivo nao esta corrompido.'));
+                    dom['progressSection'].style.display = 'none';
+                } finally {
+                    state.isConverting = false;
+                    dom['selectBtn'].disabled = false;
+                    dom['selectBtn'].textContent = 'Selecionar Arquivo';
+                }
+            }
+
+            function resetUI() {
+                dom['fileInput'].value = '';
+                dom['fileInfo'].style.display = 'none';
+                dom['progressSection'].style.display = 'none';
+                dom['actionButtons'].style.display = 'none';
+                dom['errorMessage'].style.display = 'none';
+                dom['warningList'].style.display = 'none';
+                dom['conversionStats'].style.display = 'none';
+                dom['markdown-preview'].value = '';
+                dom['rendered-preview'].innerHTML = '';
+                state.currentMarkdown = '';
+                state.currentFileName = '';
+                dom['previewTabs'].querySelector('[data-tab="markdown"]').click();
+            }
+
+            function initEvents() {
+                var uploadSection = dom['uploadSection'];
+
+                // Drag and drop
+                uploadSection.addEventListener('dragover', function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    uploadSection.classList.add('dragover');
+                });
+
+                uploadSection.addEventListener('dragleave', function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    uploadSection.classList.remove('dragover');
+                });
+
+                uploadSection.addEventListener('drop', function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    uploadSection.classList.remove('dragover');
+                    var file = e.dataTransfer.files[0];
+                    if (file) processFile(file);
+                });
+
+                // Clique na area de upload tambem abre seletor
+                uploadSection.addEventListener('click', function(e) {
+                    if (e.target === dom['selectBtn'] || e.target === dom['fileInput']) return;
+                    dom['fileInput'].click();
+                });
+
+                dom['selectBtn'].addEventListener('click', function() {
+                    dom['fileInput'].click();
+                });
+
+                dom['fileInput'].addEventListener('change', function(e) {
+                    var file = e.target.files[0];
+                    if (file) processFile(file);
+                });
+
+                // Abas de preview
+                dom['previewTabs'].addEventListener('click', function(e) {
+                    var target = e.target.closest('li');
+                    if (!target) return;
+
+                    var tabId = target.dataset.tab;
+                    document.querySelectorAll('#previewTabs li').forEach(function(tab) {
+                        tab.classList.remove('active');
+                    });
+                    target.classList.add('active');
+
+                    dom.tabContents.forEach(function(content) {
+                        content.classList.remove('active');
+                    });
+                    document.getElementById(tabId + 'Tab').classList.add('active');
+
+                    if (tabId === 'rendered' && state.currentMarkdown) {
+                        dom['rendered-preview'].innerHTML = renderMarkdownToHtml(state.currentMarkdown);
+                    }
+                });
+
+                // Copiar markdown
+                dom['copyBtn'].addEventListener('click', async function() {
+                    if (!state.currentMarkdown) return;
+                    try {
+                        await navigator.clipboard.writeText(state.currentMarkdown);
+                        dom['copyBtn'].textContent = 'Copiado!';
+                        setTimeout(function() {
+                            dom['copyBtn'].textContent = 'Copiar Markdown';
+                        }, 2000);
+                    } catch (err) {
+                        // Fallback para navegadores sem Clipboard API
+                        dom['markdown-preview'].select();
+                        document.execCommand('copy');
+                        dom['copyBtn'].textContent = 'Copiado!';
+                        setTimeout(function() {
+                            dom['copyBtn'].textContent = 'Copiar Markdown';
+                        }, 2000);
+                    }
+                });
+
+                // Baixar .md
+                dom['downloadBtn'].addEventListener('click', function() {
+                    if (!state.currentMarkdown) return;
+                    downloadFile(
+                        state.currentMarkdown,
+                        state.currentFileName.replace(/\.docx$/i, '') + '.md',
+                        'text/markdown; charset=utf-8'
+                    );
+                });
+
+                // Baixar .html renderizado
+                dom['downloadHtmlBtn'].addEventListener('click', function() {
+                    if (!state.currentMarkdown) return;
+                    var htmlContent = '<!DOCTYPE html><html><head><meta charset="UTF-8">'
+                        + '<title>' + escapeHtml(state.currentFileName) + '</title>'
+                        + '<style>body{font-family:Georgia,serif;max-width:800px;margin:40px auto;padding:0 20px;line-height:1.8;color:#333}'
+                        + 'h1{border-bottom:2px solid #333;padding-bottom:0.3rem}'
+                        + 'h2{border-bottom:1px solid #999;padding-bottom:0.2rem}'
+                        + 'blockquote{border-left:4px solid #666;margin:1rem 0;padding:0.5rem 1rem;background:#f9f9f9}'
+                        + 'table{border-collapse:collapse;width:100%}th,td{border:1px solid #ddd;padding:8px}th{background:#f0f0f0}'
+                        + '</style></head><body>'
+                        + renderMarkdownToHtml(state.currentMarkdown)
+                        + '</body></html>';
+                    downloadFile(
+                        htmlContent,
+                        state.currentFileName.replace(/\.docx$/i, '') + '.html',
+                        'text/html; charset=utf-8'
+                    );
+                });
+
+                // Limpar
+                dom['clearBtn'].addEventListener('click', resetUI);
+
+                // Permitir editar o markdown e re-renderizar
+                dom['markdown-preview'].addEventListener('input', function() {
+                    state.currentMarkdown = dom['markdown-preview'].value;
+                });
+            }
+
+            function downloadFile(content, filename, mimeType) {
+                var blob = new Blob([content], { type: mimeType });
+                var url = URL.createObjectURL(blob);
+                var a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            }
+
+            // Inicializacao
+            async function initApp() {
+                cacheDom();
+
+                try {
+                    // Carregar dependencias em paralelo
+                    await Promise.all([
+                        loadScript('https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.4.22/mammoth.browser.min.js'),
+                        loadScript('https://cdn.jsdelivr.net/npm/turndown/dist/turndown.js')
+                    ]);
+
+                    window.turndownService = configureTurndown();
+
+                    // Carregar marked.js para renderizacao rica (nao-bloqueante)
+                    loadScript('https://cdn.jsdelivr.net/npm/marked/marked.min.js')
+                        .then(function() {
+                            state.markedLoaded = true;
+                            if (window.marked && marked.setOptions) {
+                                marked.setOptions({ breaks: true, gfm: true });
+                            }
+                        })
+                        .catch(function() {
+                            console.warn('marked.js nao carregou; usando renderizador fallback.');
+                        });
+
+                    initEvents();
+
+                } catch (error) {
+                    console.error('Erro ao carregar bibliotecas:', error);
+                    showError('Erro ao inicializar. Verifique sua conexao e recarregue a pagina.');
+                }
+            }
+
+            document.addEventListener('DOMContentLoaded', initApp);
+        })();
+    </script>
+</body>
+</html>
