@@ -798,18 +798,18 @@
                 try {
                     // Carregar dependências em paralelo
                     await Promise.all([
-                        loadScript('https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.4.22/mammoth.browser.min.js'),
-                        loadScript('https://cdn.jsdelivr.net/npm/turndown/dist/turndown.js')
+                        loadScript('https://cdn.jsdelivr.net/npm/mammoth@1.12.0/mammoth.browser.min.js'),
+                        loadScript('https://cdn.jsdelivr.net/npm/turndown@7.2.2/dist/turndown.js')
                     ]);
 
                     window.turndownService = configureTurndown();
 
                     // Carregar marked.js para renderização rica (não-bloqueante)
-                    loadScript('https://cdn.jsdelivr.net/npm/marked/marked.min.js')
+                    loadScript('https://cdn.jsdelivr.net/npm/marked@17.0.5/marked.min.js')
                         .then(function() {
                             state.markedLoaded = true;
-                            if (window.marked && marked.setOptions) {
-                                marked.setOptions({ breaks: true, gfm: true });
+                            if (window.marked) {
+                                marked.use({ breaks: true, gfm: true });
                             }
                         })
                         .catch(function() {
