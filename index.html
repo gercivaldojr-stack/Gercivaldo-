@@ -520,14 +520,31 @@
             }
 
             // Sanitizar HTML gerado pelo Mammoth antes de enviar ao Turndown
+            // Retorna um nó DOM (evita serializar/re-parsear)
             function sanitizeHtml(html) {
-                var parser = new DOMParser();
-                var doc = parser.parseFromString('<div id="root">' + html + '</div>', 'text/html');
-                var root = doc.getElementById('root');
+                var container = document.createElement('div');
+                container.innerHTML = html;
 
-                // ── Remover field codes do Word ──
-                // "Erro! Indicador não definido.", "Error! Bookmark not defined.", etc.
-                var walker = doc.createTreeWalker(root, NodeFilter.SHOW_TEXT, null, false);
+                // ── 1. Remover elementos com classes sentinela do styleMap ──
+                // Headers e footers marcados pelo Mammoth
+                container.querySelectorAll('.doc-header, .doc-footer').forEach(function(el) {
+                    el.parentNode.removeChild(el);
+                });
+
+                // Notas de rodapé e notas de fim
+                var footnotes = [];
+                container.querySelectorAll('.doc-footnote, .doc-endnote').forEach(function(el) {
+                    footnotes.push(el.textContent.trim());
+                    el.parentNode.removeChild(el);
+                });
+
+                // TOC marcado pelo styleMap
+                container.querySelectorAll('.doc-toc').forEach(function(el) {
+                    el.parentNode.removeChild(el);
+                });
+
+                // ── 2. Remover field codes do Word ──
+                var walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, null, false);
                 var textNodes = [];
                 while (walker.nextNode()) textNodes.push(walker.currentNode);
 
@@ -540,7 +557,9 @@
                     /\{\\?\s*PAGEREF\s+[^}]*\}/g,
                     /\{\\?\s*TOC\s+[^}]*\}/g,
                     /\{\\?\s*HYPERLINK\s+[^}]*\}/g,
-                    /\{\\?\s*SEQ\s+[^}]*\}/g
+                    /\{\\?\s*SEQ\s+[^}]*\}/g,
+                    /\{\\?\s*MERGEFIELD\s+[^}]*\}/g,
+                    /PAGE\s*\\?\*\s*\w+/g
                 ];
 
                 textNodes.forEach(function(node) {
@@ -555,94 +574,82 @@
                     if (changed) node.textContent = text;
                 });
 
-                // ── Limpar sumário (TOC) ──
-                // Detectar blocos de TOC: sequência de linhas com leader dots (......)
-                var allParagraphs = root.querySelectorAll('p');
-                var tocStart = -1;
-                var tocEnd = -1;
+                // ── 3. Limpar sumário (TOC) por heurística de conteúdo ──
+                // (para documentos cujos estilos TOC não foram detectados pelo styleMap)
+                var allParagraphs = container.querySelectorAll('p');
                 var tocBuffer = [];
 
-                allParagraphs.forEach(function(p, idx) {
+                allParagraphs.forEach(function(p) {
                     var text = p.textContent.trim();
-                    // Padrões de TOC: texto seguido de pontos e número de página
                     var isTocEntry = /[\.·]{3,}\s*\d+\s*$/.test(text) ||
                                      /\t{2,}\d+\s*$/.test(text) ||
                                      /\s{5,}\d+\s*$/.test(text);
-
-                    if (isTocEntry) {
-                        if (tocStart === -1) tocStart = idx;
-                        tocEnd = idx;
-                        tocBuffer.push(p);
-                    }
+                    if (isTocEntry) tocBuffer.push(p);
                 });
 
-                // Se encontrou bloco de TOC significativo (3+ entradas), limpar leader dots
+                // Se encontrou bloco de TOC significativo (3+ entradas), limpar
                 if (tocBuffer.length >= 3) {
                     tocBuffer.forEach(function(p) {
                         var text = p.textContent;
-                        // Extrair apenas o título, removendo dots e número de página
                         text = text.replace(/[\.·]{3,}\s*\d+\s*$/, '').trim();
                         text = text.replace(/\t+\d+\s*$/, '').trim();
                         text = text.replace(/\s{5,}\d+\s*$/, '').trim();
-                        p.textContent = text;
+                        if (text.length > 0) {
+                            p.textContent = text;
+                        } else {
+                            p.parentNode.removeChild(p);
+                        }
                     });
                 }
 
-                // ── Converter tabelas de layout para divs ──
-                var tables = root.querySelectorAll('table');
-                tables.forEach(function(table) {
+                // ── 4. Converter tabelas de layout para divs ──
+                container.querySelectorAll('table').forEach(function(table) {
                     if (isLayoutTable(table)) {
-                        // Extrair o texto das células como parágrafos separados
-                        var fragment = doc.createDocumentFragment();
+                        var fragment = document.createDocumentFragment();
                         table.querySelectorAll('td, th').forEach(function(cell) {
-                            var cellContent = cell.innerHTML.trim();
-                            if (cellContent) {
-                                var div = doc.createElement('div');
-                                div.innerHTML = cellContent;
-                                fragment.appendChild(div);
+                            // Mover os filhos da célula diretamente
+                            while (cell.firstChild) {
+                                fragment.appendChild(cell.firstChild);
                             }
                         });
                         table.parentNode.replaceChild(fragment, table);
                     }
                 });
 
-                // ── Remover cabeçalhos/rodapés que vazaram ──
-                // Mammoth pode incluir headers/footers como parágrafos normais
-                // Detectar padrões comuns de header/footer
-                var headerFooterPatterns = [
-                    /^[\s]*CONFIDENCIAL[\s]*$/i,
-                    /^[\s]*DOCUMENTO\s+CONFIDENCIAL[\s]*$/i,
-                    /^[\s]*MINUTA[\s]*$/i,
-                    /^[\s]*RASCUNHO[\s]*$/i,
-                    /^[\s]*DRAFT[\s]*$/i,
-                    /^[\s]*www\.[^\s]+\.[a-z]{2,}[\s]*$/i,
-                    /^[\s]*http[s]?:\/\/[^\s]+[\s]*$/i
-                ];
-
+                // ── 5. Remover cabeçalhos/rodapés por heurística de conteúdo ──
+                // (fallback para documentos sem estilos Header/Footer no styleMap)
+                allParagraphs = container.querySelectorAll('p');
                 allParagraphs.forEach(function(p) {
                     var text = p.textContent.trim();
 
-                    // Remover parágrafos que são só números de página
+                    // Parágrafos que são só números de página
                     if (/^[\s]*\d{1,4}[\s]*$/.test(text)) {
                         p.parentNode.removeChild(p);
                         return;
                     }
 
-                    // Remover marcadores de página
+                    // Marcadores de página
                     if (/^P[aá]gina\s+\d+/i.test(text) || /^Page\s+\d+/i.test(text)) {
                         p.parentNode.removeChild(p);
                         return;
                     }
 
-                    // Parágrafos vazios ou só com espaços
+                    // Parágrafos vazios
                     if (text.length === 0 && !p.querySelector('img')) {
                         p.parentNode.removeChild(p);
                         return;
                     }
                 });
 
-                // ── Remover <br> excessivos ──
-                var brs = root.querySelectorAll('br');
+                // ── 6. Remover referências de notas de rodapé (superscript isolado) ──
+                container.querySelectorAll('sup').forEach(function(sup) {
+                    if (/^\d{1,3}$/.test(sup.textContent.trim())) {
+                        sup.parentNode.removeChild(sup);
+                    }
+                });
+
+                // ── 7. Remover <br> consecutivos ──
+                var brs = container.querySelectorAll('br');
                 var prevBr = null;
                 brs.forEach(function(br) {
                     if (prevBr && prevBr.nextSibling === br) {
@@ -652,7 +659,21 @@
                     }
                 });
 
-                return root.innerHTML;
+                // ── 8. Adicionar notas de rodapé ao final (se houver) ──
+                if (footnotes.length > 0) {
+                    var hr = document.createElement('hr');
+                    container.appendChild(hr);
+                    footnotes.forEach(function(note, idx) {
+                        if (note) {
+                            var p = document.createElement('p');
+                            p.textContent = '[' + (idx + 1) + '] ' + note;
+                            container.appendChild(p);
+                        }
+                    });
+                }
+
+                // Retornar nó DOM (Turndown aceita DOM nodes diretamente)
+                return container;
             }
 
             // ═══════════════════════════════════════════════════════
@@ -774,6 +795,64 @@
             // ETAPA 3: PÓS-PROCESSAMENTO DO MARKDOWN
             // ═══════════════════════════════════════════════════════
 
+            // Rejunção iterativa de parágrafos quebrados por paginação
+            // Executa múltiplas passadas para tratar parágrafos quebrados em 3+ linhas
+            function rejoinBrokenParagraphs(md) {
+                var maxIterations = 10;
+                var prev = md;
+
+                for (var iter = 0; iter < maxIterations; iter++) {
+                    var lines = prev.split('\n');
+                    var result = [];
+
+                    for (var i = 0; i < lines.length; i++) {
+                        var line = lines[i];
+                        var nextLine = lines[i + 1];
+
+                        if (!nextLine) { result.push(line); break; }
+
+                        // Verificar se a próxima linha é continuação da atual
+                        var trimmedLine = line.trimRight();
+                        var trimmedNext = nextLine.trim();
+
+                        var isContinuation = (
+                            // Linha atual não termina com pontuação de fim de frase
+                            trimmedLine.length > 0 &&
+                            !/[.!?:;)\]"']\s*$/.test(trimmedLine) &&
+                            // Linha atual não é estrutura Markdown
+                            !/^\s*$/.test(trimmedLine) &&
+                            !/^#{1,6}\s/.test(trimmedLine) &&
+                            !/^\s*[-*]\s/.test(trimmedLine) &&
+                            !/^\s*\d+\.\s/.test(trimmedLine) &&
+                            !/^\|/.test(trimmedLine) &&
+                            !/^>/.test(trimmedLine) &&
+                            !/^---/.test(trimmedLine) &&
+                            // Próxima linha começa com minúscula (continuação natural)
+                            /^[a-záàâãéêíóôõúüçñ]/.test(trimmedNext) &&
+                            trimmedNext.length > 0 &&
+                            // Próxima linha não é estrutura Markdown
+                            !/^\s*[-*]\s/.test(trimmedNext) &&
+                            !/^\s*\d+\.\s/.test(trimmedNext) &&
+                            !/^\|/.test(trimmedNext) &&
+                            !/^>/.test(trimmedNext)
+                        );
+
+                        if (isContinuation) {
+                            result.push(trimmedLine + ' ' + trimmedNext);
+                            i++; // pular próxima linha
+                        } else {
+                            result.push(line);
+                        }
+                    }
+
+                    var joined = result.join('\n');
+                    if (joined === prev) break; // sem mudanças, parar
+                    prev = joined;
+                }
+
+                return prev;
+            }
+
             // Pós-processamento de Markdown para documentos jurídicos
             function postProcessLegalMarkdown(md) {
                 return md
@@ -781,7 +860,7 @@
                     .replace(/!\[[^\]]*\]\(data:image\/[^\)]+\)/g, '')
                     .replace(/<img[^>]*src=["']data:image\/[^"']*["'][^>]*\/?>/gi, '')
 
-                    // ── Limpeza de field codes do Word ──
+                    // ── Limpeza de field codes do Word (redundância de segurança) ──
                     .replace(/Erro!\s*Indicador\s*n[ãa]o\s*definido\.?/gi, '')
                     .replace(/Error!\s*Bookmark\s*not\s*defined\.?/gi, '')
                     .replace(/Erro!\s*Fonte\s*de\s*refer[eê]ncia\s*n[ãa]o\s*encontrada\.?/gi, '')
@@ -792,13 +871,8 @@
                     .replace(/^[\s]*Page\s+\d+(\s+of\s+\d+)?[\s]*$/gim, '')
                     .replace(/^\s*[-–—]\s*\d{1,4}\s*[-–—]\s*$/gm, '')
 
-                    // ── Limpeza de sumário com leader dots ──
+                    // ── Limpeza de sumário com leader dots (residual) ──
                     .replace(/^(.+?)[\.·]{3,}\s*\d+\s*$/gm, '$1')
-
-                    // ── Reconstrução de parágrafos fragmentados ──
-                    // Rejuntar linhas quebradas no meio de frases
-                    // (linha que termina sem pontuação final + próxima que começa com minúscula)
-                    .replace(/([a-záàâãéèêíïóôõúüç,;])\s*\n([a-záàâãéèêíïóôõúüç])/gm, '$1 $2')
 
                     // ── Remover linhas duplicadas consecutivas ──
                     .replace(/^(.{10,})\n\1$/gm, '$1')
@@ -917,12 +991,41 @@
                         {
                             convertImage: imageHandler.convertImage,
                             styleMap: [
+                                // Headings (EN)
                                 "p[style-name='Title'] => h1:fresh",
                                 "p[style-name='Heading 1'] => h1:fresh",
                                 "p[style-name='Heading 2'] => h2:fresh",
                                 "p[style-name='Heading 3'] => h3:fresh",
                                 "p[style-name='Heading 4'] => h4:fresh",
+                                "p[style-name='Heading 5'] => h5:fresh",
+                                "p[style-name='Heading 6'] => h6:fresh",
                                 "p[style-name='Subtitle'] => h2:fresh",
+                                // Headings (PT)
+                                "p[style-name='Título'] => h1:fresh",
+                                "p[style-name='Título 1'] => h1:fresh",
+                                "p[style-name='Título 2'] => h2:fresh",
+                                "p[style-name='Título 3'] => h3:fresh",
+                                "p[style-name='Título 4'] => h4:fresh",
+                                // Headers/footers → classes sentinela para remoção
+                                "p[style-name='Header'] => p.doc-header:fresh",
+                                "p[style-name='Footer'] => p.doc-footer:fresh",
+                                "p[style-name='Cabeçalho'] => p.doc-header:fresh",
+                                "p[style-name='Rodapé'] => p.doc-footer:fresh",
+                                // Notas de rodapé/fim → classes sentinela
+                                "p[style-name='Footnote Text'] => p.doc-footnote:fresh",
+                                "p[style-name='Endnote Text'] => p.doc-endnote:fresh",
+                                "p[style-name='Texto de nota de rodapé'] => p.doc-footnote:fresh",
+                                "p[style-name='Texto de nota de fim'] => p.doc-endnote:fresh",
+                                "p[style-name='footnote text'] => p.doc-footnote:fresh",
+                                // TOC → classes sentinela
+                                "p[style-name='TOC 1'] => p.doc-toc:fresh",
+                                "p[style-name='TOC 2'] => p.doc-toc:fresh",
+                                "p[style-name='TOC 3'] => p.doc-toc:fresh",
+                                "p[style-name='TOC Heading'] => p.doc-toc:fresh",
+                                "p[style-name='Sumário 1'] => p.doc-toc:fresh",
+                                "p[style-name='Sumário 2'] => p.doc-toc:fresh",
+                                "p[style-name='Sumário 3'] => p.doc-toc:fresh",
+                                // Formatação
                                 "b => strong",
                                 "i => em",
                                 "u => em"
@@ -944,18 +1047,24 @@
 
                     updateProgress(50, 'Sanitizando estrutura HTML...');
 
-                    // ETAPA 1: Sanitizar HTML (remover field codes, TOC, layout tables, etc.)
-                    var cleanHtml = sanitizeHtml(html);
+                    // ETAPA 1: Sanitizar HTML (DOM-based)
+                    var cleanDom = sanitizeHtml(html);
 
                     updateProgress(65, 'Convertendo HTML para Markdown...');
 
-                    // ETAPA 2: Converter HTML sanitizado para Markdown
-                    var mdContent = window.turndownService.turndown(cleanHtml);
+                    // ETAPA 2: Converter DOM sanitizado para Markdown
+                    // (passar nó DOM direto evita serializar/re-parsear)
+                    var mdContent = window.turndownService.turndown(cleanDom);
 
-                    updateProgress(80, 'Aplicando pós-processamento jurídico...');
+                    updateProgress(75, 'Reconstruindo parágrafos...');
 
-                    // Pós-processamento
-                    var processedMarkdown = postProcessLegalMarkdown(mdContent);
+                    // ETAPA 3a: Rejunção iterativa de parágrafos fragmentados
+                    var mdRejoined = rejoinBrokenParagraphs(mdContent);
+
+                    updateProgress(85, 'Aplicando pós-processamento jurídico...');
+
+                    // ETAPA 3b: Pós-processamento
+                    var processedMarkdown = postProcessLegalMarkdown(mdRejoined);
                     state.currentMarkdown = processedMarkdown;
 
                     // Atualizar previews
@@ -1256,16 +1365,22 @@
                     md4.indexOf('data:image') === -1,
                     'Encontrou: ' + md4);
 
-                // ── Teste 5: Reconstrução de parágrafos ──
-                var md5 = postProcessLegalMarkdown('Esta frase foi quebrada\npor paginação artificial.');
+                // ── Teste 5: Reconstrução de parágrafos (rejoinBrokenParagraphs) ──
+                var md5 = rejoinBrokenParagraphs('Esta frase foi quebrada\npor paginação artificial.');
                 assert('Rejunta parágrafo fragmentado',
                     md5.indexOf('quebrada por') !== -1,
                     'Encontrou: ' + md5);
 
+                // ── Teste 5b: Rejunção iterativa (3+ linhas) ──
+                var md5b = rejoinBrokenParagraphs('O contrato foi assinado\npelas partes\nem janeiro.');
+                assert('Rejunta parágrafo fragmentado em 3 linhas',
+                    md5b.indexOf('assinado pelas partes em') !== -1,
+                    'Encontrou: ' + md5b);
+
                 // ── Teste 6: Não rejuntar após pontuação ──
-                var md6 = postProcessLegalMarkdown('Frase completa.\nNova frase aqui.');
+                var md6 = rejoinBrokenParagraphs('Frase completa.\nNova frase aqui.');
                 assert('Preserva quebra após pontuação',
-                    md6.indexOf('.\n') !== -1 || md6.indexOf('.\n\n') !== -1,
+                    md6.indexOf('.\n') !== -1,
                     'Encontrou: ' + md6);
 
                 // ── Teste 7: Remoção de linhas duplicadas ──
@@ -1283,33 +1398,66 @@
 
                 // ── Teste 9: Sanitização HTML - field codes ──
                 var html9 = '<p>Ver Erro! Indicador não definido. na seção 3.</p>';
-                var clean9 = sanitizeHtml(html9);
+                var dom9 = sanitizeHtml(html9);
                 assert('Sanitiza field codes no HTML',
-                    clean9.indexOf('Erro!') === -1,
-                    'Encontrou: ' + clean9);
+                    dom9.textContent.indexOf('Erro!') === -1,
+                    'Encontrou: ' + dom9.textContent);
 
                 // ── Teste 10: Sanitização HTML - tabela de layout ──
                 var html10 = '<table><tr><td>' + 'x'.repeat(350) + '</td></tr></table>';
-                var clean10 = sanitizeHtml(html10);
+                var dom10 = sanitizeHtml(html10);
                 assert('Converte tabela de layout para texto',
-                    clean10.indexOf('<table') === -1,
+                    dom10.querySelector('table') === null,
                     'Encontrou table tag');
 
                 // ── Teste 11: Tabela real preservada ──
                 var html11 = '<table><tr><th>Nome</th><th>Cargo</th></tr>'
                     + '<tr><td>João</td><td>Advogado</td></tr>'
                     + '<tr><td>Maria</td><td>Juíza</td></tr></table>';
-                var clean11 = sanitizeHtml(html11);
+                var dom11 = sanitizeHtml(html11);
                 assert('Preserva tabela real de dados',
-                    clean11.indexOf('<table') !== -1,
+                    dom11.querySelector('table') !== null,
                     'Tabela foi removida indevidamente');
 
                 // ── Teste 12: Remoção de números de página ──
                 var html12 = '<p>15</p><p>Conteúdo real</p><p>16</p>';
-                var clean12 = sanitizeHtml(html12);
+                var dom12 = sanitizeHtml(html12);
+                var text12 = dom12.innerHTML;
                 assert('Remove parágrafos com apenas número de página',
-                    clean12.indexOf('>15<') === -1 && clean12.indexOf('Conteúdo real') !== -1,
-                    'Encontrou: ' + clean12);
+                    text12.indexOf('>15<') === -1 && text12.indexOf('Conteúdo real') !== -1,
+                    'Encontrou: ' + text12);
+
+                // ── Teste 14: Remoção de headers/footers por classe sentinela ──
+                var html14 = '<p class="doc-header">Cabeçalho da empresa</p><p>Texto real</p><p class="doc-footer">Página 1</p>';
+                var dom14 = sanitizeHtml(html14);
+                assert('Remove header/footer por classe sentinela',
+                    dom14.textContent.indexOf('Cabeçalho da empresa') === -1 &&
+                    dom14.textContent.indexOf('Texto real') !== -1,
+                    'Encontrou: ' + dom14.textContent);
+
+                // ── Teste 15: Remoção de notas de rodapé por classe sentinela ──
+                var html15 = '<p>Texto principal</p><p class="doc-footnote">Nota: referência legal</p>';
+                var dom15 = sanitizeHtml(html15);
+                assert('Remove footnote inline e adiciona ao final',
+                    dom15.textContent.indexOf('Texto principal') !== -1 &&
+                    dom15.textContent.indexOf('[1] Nota: referência legal') !== -1,
+                    'Encontrou: ' + dom15.textContent);
+
+                // ── Teste 16: Remoção de TOC por classe sentinela ──
+                var html16 = '<p class="doc-toc">Capítulo 1</p><p class="doc-toc">Capítulo 2</p><p>Corpo do texto</p>';
+                var dom16 = sanitizeHtml(html16);
+                assert('Remove TOC por classe sentinela',
+                    dom16.textContent.indexOf('Capítulo 1') === -1 &&
+                    dom16.textContent.indexOf('Corpo do texto') !== -1,
+                    'Encontrou: ' + dom16.textContent);
+
+                // ── Teste 17: Remoção de superscript de nota de rodapé ──
+                var html17 = '<p>Conforme a lei<sup>1</sup> vigente</p>';
+                var dom17 = sanitizeHtml(html17);
+                assert('Remove superscript de nota de rodapé',
+                    dom17.querySelector('sup') === null &&
+                    dom17.textContent.indexOf('vigente') !== -1,
+                    'Encontrou: ' + dom17.innerHTML);
 
                 // ── Teste 13: Tabelas degeneradas no Markdown ──
                 var md13 = postProcessLegalMarkdown('Texto\n| Col1 | Col2 |\n| --- | --- |\nMais texto');
