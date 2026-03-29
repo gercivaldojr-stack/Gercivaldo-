@@ -476,8 +476,16 @@
                 var rows = table.querySelectorAll('tr');
                 var totalRows = rows.length;
 
-                // Tabela com 0-1 linhas não é tabela de dados útil
-                if (totalRows <= 1) return true;
+                // Tabela com 0 linhas não é tabela de dados
+                if (totalRows === 0) return true;
+
+                // Tabela com 1 linha E 1 célula — wrapper de layout
+                if (totalRows === 1) {
+                    var cells1 = rows[0].querySelectorAll('td, th');
+                    if (cells1.length === 1) return true;
+                    // 1 linha com múltiplas colunas pode ser tabela válida
+                    return false;
+                }
 
                 // Contar colunas
                 var colCounts = [];
@@ -485,15 +493,11 @@
                     colCounts.push(row.querySelectorAll('td, th').length);
                 });
 
-                // Tabelas de coluna única são quase sempre layout
+                // Tabelas de coluna única com muitas linhas → provavelmente layout
                 var maxCols = Math.max.apply(null, colCounts);
-                if (maxCols <= 1) return true;
+                if (maxCols <= 1 && totalRows > 3) return true;
 
-                // Colunas inconsistentes indicam layout
-                var inconsistent = colCounts.filter(function(c) { return c !== maxCols; });
-                if (inconsistent.length > totalRows * 0.4) return true;
-
-                // Se tem apenas 1 linha com conteúdo e muitas células vazias
+                // Mais de 70% de células vazias → provavelmente layout
                 var emptyCells = 0;
                 var totalCells = 0;
                 rows.forEach(function(row) {
@@ -502,19 +506,7 @@
                         if (cell.textContent.trim().length === 0) emptyCells++;
                     });
                 });
-                if (totalCells > 0 && emptyCells / totalCells > 0.7) return true;
-
-                // Verificar se alguma célula contém parágrafos longos (indica layout)
-                var hasLongParagraphs = false;
-                table.querySelectorAll('td').forEach(function(cell) {
-                    var text = cell.textContent.trim();
-                    // Célula com mais de 300 caracteres provavelmente é layout
-                    if (text.length > 300) hasLongParagraphs = true;
-                    // Célula com múltiplos parágrafos
-                    var pCount = cell.querySelectorAll('p');
-                    if (pCount.length > 4) hasLongParagraphs = true;
-                });
-                if (hasLongParagraphs && maxCols <= 2) return true;
+                if (totalCells > 4 && emptyCells / totalCells > 0.7) return true;
 
                 return false;
             }
@@ -616,35 +608,16 @@
                     }
                 });
 
-                // ── 5. Remover cabeçalhos/rodapés por heurística de conteúdo ──
-                // (fallback para documentos sem estilos Header/Footer no styleMap)
+                // ── 5. Remover marcadores de página explícitos ──
+                // (apenas padrões inequívocos — evitar remover conteúdo legítimo)
                 allParagraphs = container.querySelectorAll('p');
                 allParagraphs.forEach(function(p) {
                     var text = p.textContent.trim();
 
-                    // Parágrafos que são só números de página
-                    if (/^[\s]*\d{1,4}[\s]*$/.test(text)) {
+                    // "Página X de Y" ou "Page X of Y" — inequivocamente paginação
+                    if (/^P[aá]gina\s+\d+\s+de\s+\d+$/i.test(text) ||
+                        /^Page\s+\d+\s+of\s+\d+$/i.test(text)) {
                         p.parentNode.removeChild(p);
-                        return;
-                    }
-
-                    // Marcadores de página
-                    if (/^P[aá]gina\s+\d+/i.test(text) || /^Page\s+\d+/i.test(text)) {
-                        p.parentNode.removeChild(p);
-                        return;
-                    }
-
-                    // Parágrafos vazios
-                    if (text.length === 0 && !p.querySelector('img')) {
-                        p.parentNode.removeChild(p);
-                        return;
-                    }
-                });
-
-                // ── 6. Remover referências de notas de rodapé (superscript isolado) ──
-                container.querySelectorAll('sup').forEach(function(sup) {
-                    if (/^\d{1,3}$/.test(sup.textContent.trim())) {
-                        sup.parentNode.removeChild(sup);
                     }
                 });
 
@@ -866,9 +839,9 @@
                     .replace(/Erro!\s*Fonte\s*de\s*refer[eê]ncia\s*n[ãa]o\s*encontrada\.?/gi, '')
                     .replace(/Error!\s*Reference\s*source\s*not\s*found\.?/gi, '')
 
-                    // ── Limpeza de ruído de paginação ──
-                    .replace(/^[\s]*P[aá]gina\s+\d+(\s+de\s+\d+)?[\s]*$/gim, '')
-                    .replace(/^[\s]*Page\s+\d+(\s+of\s+\d+)?[\s]*$/gim, '')
+                    // ── Limpeza de ruído de paginação (apenas padrões inequívocos) ──
+                    .replace(/^[\s]*P[aá]gina\s+\d+\s+de\s+\d+[\s]*$/gim, '')
+                    .replace(/^[\s]*Page\s+\d+\s+of\s+\d+[\s]*$/gim, '')
                     .replace(/^\s*[-–—]\s*\d{1,4}\s*[-–—]\s*$/gm, '')
 
                     // ── Limpeza de sumário com leader dots (residual) ──
@@ -1344,14 +1317,20 @@
 
                 // ── Teste 2: Remoção de paginação ──
                 var md2 = postProcessLegalMarkdown('Texto antes\nPágina 1 de 10\nTexto depois');
-                assert('Remove marcador de página',
-                    md2.indexOf('Página 1') === -1,
+                assert('Remove marcador de página completo',
+                    md2.indexOf('Página 1 de 10') === -1,
                     'Encontrou: ' + md2);
 
                 var md2b = postProcessLegalMarkdown('Texto\n— 15 —\nMais texto');
                 assert('Remove número de página com traço',
                     md2b.indexOf('— 15 —') === -1,
                     'Encontrou: ' + md2b);
+
+                // ── Teste 2c: NÃO remover "Página X" sem "de Y" (pode ser conteúdo) ──
+                var md2c = postProcessLegalMarkdown('Página 5 trata do tema');
+                assert('Preserva "Página X" sem "de Y"',
+                    md2c.indexOf('Página 5') !== -1,
+                    'Removeu indevidamente: ' + md2c);
 
                 // ── Teste 3: Limpeza de sumário ──
                 var md3 = postProcessLegalMarkdown('Capítulo 1.........5\nCapítulo 2..........12');
@@ -1403,12 +1382,20 @@
                     dom9.textContent.indexOf('Erro!') === -1,
                     'Encontrou: ' + dom9.textContent);
 
-                // ── Teste 10: Sanitização HTML - tabela de layout ──
-                var html10 = '<table><tr><td>' + 'x'.repeat(350) + '</td></tr></table>';
+                // ── Teste 10: Sanitização HTML - tabela de layout (1 linha, 1 célula) ──
+                var html10 = '<table><tr><td><p>Texto simples</p></td></tr></table>';
                 var dom10 = sanitizeHtml(html10);
-                assert('Converte tabela de layout para texto',
+                assert('Converte tabela wrapper (1x1) para texto',
                     dom10.querySelector('table') === null,
                     'Encontrou table tag');
+
+                // ── Teste 10b: NÃO remover tabela de 2 colunas com conteúdo longo ──
+                var html10b = '<table><tr><td>' + 'x'.repeat(350) + '</td><td>' + 'y'.repeat(350) + '</td></tr>'
+                    + '<tr><td>Dados A</td><td>Dados B</td></tr></table>';
+                var dom10b = sanitizeHtml(html10b);
+                assert('Preserva tabela de 2 colunas com conteúdo longo',
+                    dom10b.querySelector('table') !== null,
+                    'Removeu tabela comparativa indevidamente');
 
                 // ── Teste 11: Tabela real preservada ──
                 var html11 = '<table><tr><th>Nome</th><th>Cargo</th></tr>'
@@ -1419,13 +1406,21 @@
                     dom11.querySelector('table') !== null,
                     'Tabela foi removida indevidamente');
 
-                // ── Teste 12: Remoção de números de página ──
+                // ── Teste 12: Preservar números isolados (podem ser conteúdo) ──
                 var html12 = '<p>15</p><p>Conteúdo real</p><p>16</p>';
                 var dom12 = sanitizeHtml(html12);
                 var text12 = dom12.innerHTML;
-                assert('Remove parágrafos com apenas número de página',
-                    text12.indexOf('>15<') === -1 && text12.indexOf('Conteúdo real') !== -1,
+                assert('Preserva parágrafos com números (não agressivo)',
+                    text12.indexOf('Conteúdo real') !== -1,
                     'Encontrou: ' + text12);
+
+                // ── Teste 12b: Remove "Página X de Y" ──
+                var html12b = '<p>Página 3 de 15</p><p>Conteúdo real</p>';
+                var dom12b = sanitizeHtml(html12b);
+                assert('Remove Página X de Y',
+                    dom12b.textContent.indexOf('Página 3 de 15') === -1 &&
+                    dom12b.textContent.indexOf('Conteúdo real') !== -1,
+                    'Encontrou: ' + dom12b.textContent);
 
                 // ── Teste 14: Remoção de headers/footers por classe sentinela ──
                 var html14 = '<p class="doc-header">Cabeçalho da empresa</p><p>Texto real</p><p class="doc-footer">Página 1</p>';
@@ -1451,11 +1446,10 @@
                     dom16.textContent.indexOf('Corpo do texto') !== -1,
                     'Encontrou: ' + dom16.textContent);
 
-                // ── Teste 17: Remoção de superscript de nota de rodapé ──
+                // ── Teste 17: Preserva superscript (não remover agressivamente) ──
                 var html17 = '<p>Conforme a lei<sup>1</sup> vigente</p>';
                 var dom17 = sanitizeHtml(html17);
-                assert('Remove superscript de nota de rodapé',
-                    dom17.querySelector('sup') === null &&
+                assert('Preserva texto com superscript',
                     dom17.textContent.indexOf('vigente') !== -1,
                     'Encontrou: ' + dom17.innerHTML);
 
