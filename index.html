@@ -467,6 +467,198 @@
                 };
             }
 
+            // ═══════════════════════════════════════════════════════
+            // ETAPA 1: SANITIZAÇÃO HTML (entre Mammoth e Turndown)
+            // ═══════════════════════════════════════════════════════
+
+            // Detectar se uma <table> é tabela de dados ou layout visual do Word
+            function isLayoutTable(table) {
+                var rows = table.querySelectorAll('tr');
+                var totalRows = rows.length;
+
+                // Tabela com 0-1 linhas não é tabela de dados útil
+                if (totalRows <= 1) return true;
+
+                // Contar colunas
+                var colCounts = [];
+                rows.forEach(function(row) {
+                    colCounts.push(row.querySelectorAll('td, th').length);
+                });
+
+                // Tabelas de coluna única são quase sempre layout
+                var maxCols = Math.max.apply(null, colCounts);
+                if (maxCols <= 1) return true;
+
+                // Colunas inconsistentes indicam layout
+                var inconsistent = colCounts.filter(function(c) { return c !== maxCols; });
+                if (inconsistent.length > totalRows * 0.4) return true;
+
+                // Se tem apenas 1 linha com conteúdo e muitas células vazias
+                var emptyCells = 0;
+                var totalCells = 0;
+                rows.forEach(function(row) {
+                    row.querySelectorAll('td, th').forEach(function(cell) {
+                        totalCells++;
+                        if (cell.textContent.trim().length === 0) emptyCells++;
+                    });
+                });
+                if (totalCells > 0 && emptyCells / totalCells > 0.7) return true;
+
+                // Verificar se alguma célula contém parágrafos longos (indica layout)
+                var hasLongParagraphs = false;
+                table.querySelectorAll('td').forEach(function(cell) {
+                    var text = cell.textContent.trim();
+                    // Célula com mais de 300 caracteres provavelmente é layout
+                    if (text.length > 300) hasLongParagraphs = true;
+                    // Célula com múltiplos parágrafos
+                    var pCount = cell.querySelectorAll('p');
+                    if (pCount.length > 4) hasLongParagraphs = true;
+                });
+                if (hasLongParagraphs && maxCols <= 2) return true;
+
+                return false;
+            }
+
+            // Sanitizar HTML gerado pelo Mammoth antes de enviar ao Turndown
+            function sanitizeHtml(html) {
+                var parser = new DOMParser();
+                var doc = parser.parseFromString('<div id="root">' + html + '</div>', 'text/html');
+                var root = doc.getElementById('root');
+
+                // ── Remover field codes do Word ──
+                // "Erro! Indicador não definido.", "Error! Bookmark not defined.", etc.
+                var walker = doc.createTreeWalker(root, NodeFilter.SHOW_TEXT, null, false);
+                var textNodes = [];
+                while (walker.nextNode()) textNodes.push(walker.currentNode);
+
+                var fieldPatterns = [
+                    /Erro!\s*Indicador\s*n[ãa]o\s*definido\.?/gi,
+                    /Error!\s*Bookmark\s*not\s*defined\.?/gi,
+                    /Erro!\s*Fonte\s*de\s*refer[eê]ncia\s*n[ãa]o\s*encontrada\.?/gi,
+                    /Error!\s*Reference\s*source\s*not\s*found\.?/gi,
+                    /\{\\?\s*REF\s+[^}]*\}/g,
+                    /\{\\?\s*PAGEREF\s+[^}]*\}/g,
+                    /\{\\?\s*TOC\s+[^}]*\}/g,
+                    /\{\\?\s*HYPERLINK\s+[^}]*\}/g,
+                    /\{\\?\s*SEQ\s+[^}]*\}/g
+                ];
+
+                textNodes.forEach(function(node) {
+                    var text = node.textContent;
+                    var changed = false;
+                    fieldPatterns.forEach(function(pattern) {
+                        if (pattern.test(text)) {
+                            text = text.replace(pattern, '');
+                            changed = true;
+                        }
+                    });
+                    if (changed) node.textContent = text;
+                });
+
+                // ── Limpar sumário (TOC) ──
+                // Detectar blocos de TOC: sequência de linhas com leader dots (......)
+                var allParagraphs = root.querySelectorAll('p');
+                var tocStart = -1;
+                var tocEnd = -1;
+                var tocBuffer = [];
+
+                allParagraphs.forEach(function(p, idx) {
+                    var text = p.textContent.trim();
+                    // Padrões de TOC: texto seguido de pontos e número de página
+                    var isTocEntry = /[\.·]{3,}\s*\d+\s*$/.test(text) ||
+                                     /\t{2,}\d+\s*$/.test(text) ||
+                                     /\s{5,}\d+\s*$/.test(text);
+
+                    if (isTocEntry) {
+                        if (tocStart === -1) tocStart = idx;
+                        tocEnd = idx;
+                        tocBuffer.push(p);
+                    }
+                });
+
+                // Se encontrou bloco de TOC significativo (3+ entradas), limpar leader dots
+                if (tocBuffer.length >= 3) {
+                    tocBuffer.forEach(function(p) {
+                        var text = p.textContent;
+                        // Extrair apenas o título, removendo dots e número de página
+                        text = text.replace(/[\.·]{3,}\s*\d+\s*$/, '').trim();
+                        text = text.replace(/\t+\d+\s*$/, '').trim();
+                        text = text.replace(/\s{5,}\d+\s*$/, '').trim();
+                        p.textContent = text;
+                    });
+                }
+
+                // ── Converter tabelas de layout para divs ──
+                var tables = root.querySelectorAll('table');
+                tables.forEach(function(table) {
+                    if (isLayoutTable(table)) {
+                        // Extrair o texto das células como parágrafos separados
+                        var fragment = doc.createDocumentFragment();
+                        table.querySelectorAll('td, th').forEach(function(cell) {
+                            var cellContent = cell.innerHTML.trim();
+                            if (cellContent) {
+                                var div = doc.createElement('div');
+                                div.innerHTML = cellContent;
+                                fragment.appendChild(div);
+                            }
+                        });
+                        table.parentNode.replaceChild(fragment, table);
+                    }
+                });
+
+                // ── Remover cabeçalhos/rodapés que vazaram ──
+                // Mammoth pode incluir headers/footers como parágrafos normais
+                // Detectar padrões comuns de header/footer
+                var headerFooterPatterns = [
+                    /^[\s]*CONFIDENCIAL[\s]*$/i,
+                    /^[\s]*DOCUMENTO\s+CONFIDENCIAL[\s]*$/i,
+                    /^[\s]*MINUTA[\s]*$/i,
+                    /^[\s]*RASCUNHO[\s]*$/i,
+                    /^[\s]*DRAFT[\s]*$/i,
+                    /^[\s]*www\.[^\s]+\.[a-z]{2,}[\s]*$/i,
+                    /^[\s]*http[s]?:\/\/[^\s]+[\s]*$/i
+                ];
+
+                allParagraphs.forEach(function(p) {
+                    var text = p.textContent.trim();
+
+                    // Remover parágrafos que são só números de página
+                    if (/^[\s]*\d{1,4}[\s]*$/.test(text)) {
+                        p.parentNode.removeChild(p);
+                        return;
+                    }
+
+                    // Remover marcadores de página
+                    if (/^P[aá]gina\s+\d+/i.test(text) || /^Page\s+\d+/i.test(text)) {
+                        p.parentNode.removeChild(p);
+                        return;
+                    }
+
+                    // Parágrafos vazios ou só com espaços
+                    if (text.length === 0 && !p.querySelector('img')) {
+                        p.parentNode.removeChild(p);
+                        return;
+                    }
+                });
+
+                // ── Remover <br> excessivos ──
+                var brs = root.querySelectorAll('br');
+                var prevBr = null;
+                brs.forEach(function(br) {
+                    if (prevBr && prevBr.nextSibling === br) {
+                        br.parentNode.removeChild(br);
+                    } else {
+                        prevBr = br;
+                    }
+                });
+
+                return root.innerHTML;
+            }
+
+            // ═══════════════════════════════════════════════════════
+            // ETAPA 2: CONFIGURAÇÃO DO TURNDOWN
+            // ═══════════════════════════════════════════════════════
+
             // Configurar Turndown com regras otimizadas para documentos jurídicos
             function configureTurndown() {
                 var service = new TurndownService({
@@ -487,53 +679,87 @@
                         var src = node.getAttribute('src') || '';
                         var alt = node.getAttribute('alt') || '';
 
-                        // Se ainda houver base64 residual, substituir por placeholder
                         if (src.indexOf('data:') === 0) {
-                            return '\n\n![imagem removida - base64]()\n\n';
+                            return '';
                         }
 
                         return '\n\n![' + alt + '](' + src + ')\n\n';
                     }
                 });
 
-                // Preservar tabelas em HTML quando não puderem ser convertidas
-                service.addRule('tables', {
+                // Tabelas inteligentes — já pré-filtradas pelo sanitizador
+                service.addRule('smartTables', {
                     filter: ['table'],
                     replacement: function(content, node) {
                         var rows = node.querySelectorAll('tr');
                         if (rows.length === 0) return content;
 
-                        var mdRows = [];
+                        // Extrair dados estruturados
+                        var headerRow = [];
+                        var dataRows = [];
                         var maxCols = 0;
 
-                        rows.forEach(function(row) {
+                        rows.forEach(function(row, rowIdx) {
                             var cells = row.querySelectorAll('td, th');
+                            var isHeader = row.querySelectorAll('th').length > 0;
                             var cellTexts = [];
+
                             cells.forEach(function(cell) {
-                                cellTexts.push(cell.textContent.trim().replace(/\|/g, '\\|'));
+                                // Preservar conteúdo rico dentro das células
+                                var text = cell.textContent.trim()
+                                    .replace(/\|/g, '\\|')
+                                    .replace(/\n+/g, ' ')  // Aplainar quebras de linha internas
+                                    .replace(/\s{2,}/g, ' ');
+                                cellTexts.push(text);
                             });
+
                             if (cellTexts.length > maxCols) maxCols = cellTexts.length;
-                            mdRows.push(cellTexts);
+
+                            if ((rowIdx === 0 && isHeader) || (rowIdx === 0 && dataRows.length === 0)) {
+                                headerRow = cellTexts;
+                            } else {
+                                dataRows.push(cellTexts);
+                            }
                         });
 
                         if (maxCols === 0) return content;
 
-                        mdRows.forEach(function(row) {
+                        // Se não há header explícito, usar primeira linha como header
+                        if (headerRow.length === 0 && dataRows.length > 0) {
+                            headerRow = dataRows.shift();
+                        }
+
+                        // Normalizar colunas
+                        while (headerRow.length < maxCols) headerRow.push('');
+                        dataRows.forEach(function(row) {
                             while (row.length < maxCols) row.push('');
                         });
 
+                        // Verificar se a tabela é degenerada (todas as células quase vazias)
+                        var totalContent = headerRow.join('');
+                        dataRows.forEach(function(row) { totalContent += row.join(''); });
+                        if (totalContent.trim().length < 5) return '';
+
+                        // Montar tabela markdown
                         var lines = [];
-                        lines.push('| ' + mdRows[0].join(' | ') + ' |');
-                        lines.push('| ' + mdRows[0].map(function() { return '---'; }).join(' | ') + ' |');
-                        for (var i = 1; i < mdRows.length; i++) {
-                            lines.push('| ' + mdRows[i].join(' | ') + ' |');
-                        }
+                        lines.push('| ' + headerRow.join(' | ') + ' |');
+                        lines.push('| ' + headerRow.map(function() { return '---'; }).join(' | ') + ' |');
+                        dataRows.forEach(function(row) {
+                            // Pular linhas completamente vazias
+                            var rowContent = row.join('').trim();
+                            if (rowContent.length > 0) {
+                                lines.push('| ' + row.join(' | ') + ' |');
+                            }
+                        });
+
+                        // Se ficou só header + separador, não vale como tabela
+                        if (lines.length <= 2) return headerRow.join(' — ');
 
                         return '\n\n' + lines.join('\n') + '\n\n';
                     }
                 });
 
-                // Regra para preservar quebras de linha dentro de parágrafos
+                // Preservar quebras de linha dentro de parágrafos
                 service.addRule('lineBreaks', {
                     filter: ['br'],
                     replacement: function() {
@@ -544,27 +770,42 @@
                 return service;
             }
 
+            // ═══════════════════════════════════════════════════════
+            // ETAPA 3: PÓS-PROCESSAMENTO DO MARKDOWN
+            // ═══════════════════════════════════════════════════════
+
             // Pós-processamento de Markdown para documentos jurídicos
             function postProcessLegalMarkdown(md) {
                 return md
                     // ── Limpeza de base64 residual ──
-                    // Remover imagens inline com data URI que escaparam do handler
                     .replace(/!\[[^\]]*\]\(data:image\/[^\)]+\)/g, '')
-                    // Remover tags <img> com base64 que sobraram no texto
                     .replace(/<img[^>]*src=["']data:image\/[^"']*["'][^>]*\/?>/gi, '')
 
-                    // ── Limpeza de ruído de OCR/paginação ──
-                    // Remover marcadores de página (ex: "Página 1 de 10", "Page 1")
+                    // ── Limpeza de field codes do Word ──
+                    .replace(/Erro!\s*Indicador\s*n[ãa]o\s*definido\.?/gi, '')
+                    .replace(/Error!\s*Bookmark\s*not\s*defined\.?/gi, '')
+                    .replace(/Erro!\s*Fonte\s*de\s*refer[eê]ncia\s*n[ãa]o\s*encontrada\.?/gi, '')
+                    .replace(/Error!\s*Reference\s*source\s*not\s*found\.?/gi, '')
+
+                    // ── Limpeza de ruído de paginação ──
                     .replace(/^[\s]*P[aá]gina\s+\d+(\s+de\s+\d+)?[\s]*$/gim, '')
                     .replace(/^[\s]*Page\s+\d+(\s+of\s+\d+)?[\s]*$/gim, '')
-                    // Remover linhas que são apenas números de página isolados
-                    .replace(/^\s*\d{1,4}\s*$/gm, '')
-                    // Remover linhas duplicadas consecutivas (OCR gera isso)
-                    .replace(/^(.+)\n\1$/gm, '$1')
+                    .replace(/^\s*[-–—]\s*\d{1,4}\s*[-–—]\s*$/gm, '')
+
+                    // ── Limpeza de sumário com leader dots ──
+                    .replace(/^(.+?)[\.·]{3,}\s*\d+\s*$/gm, '$1')
+
+                    // ── Reconstrução de parágrafos fragmentados ──
+                    // Rejuntar linhas quebradas no meio de frases
+                    // (linha que termina sem pontuação final + próxima que começa com minúscula)
+                    .replace(/([a-záàâãéèêíïóôõúüç,;])\s*\n([a-záàâãéèêíïóôõúüç])/gm, '$1 $2')
+
+                    // ── Remover linhas duplicadas consecutivas ──
+                    .replace(/^(.{10,})\n\1$/gm, '$1')
 
                     // ── Normalização estrutural ──
-                    // Normalizar quebras de linha excessivas
                     .replace(/\n{3,}/g, '\n\n')
+
                     // Promover artigos para heading nível 3 quando não são headings
                     .replace(/^(Art\.\s*\d+[^\n]*)/gm, '### $1')
                     // Evitar headings duplicados (### ### ...)
@@ -578,7 +819,14 @@
                     .replace(/^(\s*)([a-z])\)\s*/gm, '$1- **$2)** ')
                     // Limpar espaços extras em headings
                     .replace(/^(#+)\s{2,}/gm, '$1 ')
-                    // Normalizar novamente após limpezas
+
+                    // ── Limpeza de tabelas degeneradas no Markdown ──
+                    // Remover tabelas que ficaram só com header e separador
+                    .replace(/\n\|[^\n]+\|\n\|[\s\-:|]+\|\n(?!\|)/g, '\n')
+                    // Remover tabelas com todas as células vazias
+                    .replace(/\n(\|[\s]*\|[\s]*\n){2,}/g, '\n')
+
+                    // Normalizar novamente
                     .replace(/\n{3,}/g, '\n\n')
                     .trim();
             }
@@ -694,10 +942,15 @@
                         return;
                     }
 
-                    updateProgress(60, 'Convertendo HTML para Markdown...');
+                    updateProgress(50, 'Sanitizando estrutura HTML...');
 
-                    // Converter HTML para Markdown
-                    var mdContent = window.turndownService.turndown(html);
+                    // ETAPA 1: Sanitizar HTML (remover field codes, TOC, layout tables, etc.)
+                    var cleanHtml = sanitizeHtml(html);
+
+                    updateProgress(65, 'Convertendo HTML para Markdown...');
+
+                    // ETAPA 2: Converter HTML sanitizado para Markdown
+                    var mdContent = window.turndownService.turndown(cleanHtml);
 
                     updateProgress(80, 'Aplicando pós-processamento jurídico...');
 
@@ -948,6 +1201,134 @@
                     showError('Erro ao inicializar. Verifique sua conexão e recarregue a página.');
                 }
             }
+
+            // ═══════════════════════════════════════════════════════
+            // TESTES DE REGRESSÃO INLINE
+            // Executar no console: __runDocxConverterTests()
+            // ═══════════════════════════════════════════════════════
+
+            window.__runDocxConverterTests = function() {
+                var passed = 0;
+                var failed = 0;
+                var results = [];
+
+                function assert(name, condition, detail) {
+                    if (condition) {
+                        passed++;
+                        results.push('PASS: ' + name);
+                    } else {
+                        failed++;
+                        results.push('FAIL: ' + name + (detail ? ' — ' + detail : ''));
+                    }
+                }
+
+                // ── Teste 1: Remoção de field codes ──
+                var md1 = postProcessLegalMarkdown('Conforme Art. 5 Erro! Indicador não definido. do regulamento.');
+                assert('Remove field code PT',
+                    md1.indexOf('Erro!') === -1,
+                    'Encontrou: ' + md1);
+
+                var md1b = postProcessLegalMarkdown('See section Error! Bookmark not defined. above.');
+                assert('Remove field code EN',
+                    md1b.indexOf('Error!') === -1,
+                    'Encontrou: ' + md1b);
+
+                // ── Teste 2: Remoção de paginação ──
+                var md2 = postProcessLegalMarkdown('Texto antes\nPágina 1 de 10\nTexto depois');
+                assert('Remove marcador de página',
+                    md2.indexOf('Página 1') === -1,
+                    'Encontrou: ' + md2);
+
+                var md2b = postProcessLegalMarkdown('Texto\n— 15 —\nMais texto');
+                assert('Remove número de página com traço',
+                    md2b.indexOf('— 15 —') === -1,
+                    'Encontrou: ' + md2b);
+
+                // ── Teste 3: Limpeza de sumário ──
+                var md3 = postProcessLegalMarkdown('Capítulo 1.........5\nCapítulo 2..........12');
+                assert('Limpa leader dots do sumário',
+                    md3.indexOf('........') === -1 && md3.indexOf('Capítulo 1') !== -1,
+                    'Encontrou: ' + md3);
+
+                // ── Teste 4: Remoção de base64 ──
+                var md4 = postProcessLegalMarkdown('Texto ![img](data:image/png;base64,iVBOR) mais texto');
+                assert('Remove imagem base64',
+                    md4.indexOf('data:image') === -1,
+                    'Encontrou: ' + md4);
+
+                // ── Teste 5: Reconstrução de parágrafos ──
+                var md5 = postProcessLegalMarkdown('Esta frase foi quebrada\npor paginação artificial.');
+                assert('Rejunta parágrafo fragmentado',
+                    md5.indexOf('quebrada por') !== -1,
+                    'Encontrou: ' + md5);
+
+                // ── Teste 6: Não rejuntar após pontuação ──
+                var md6 = postProcessLegalMarkdown('Frase completa.\nNova frase aqui.');
+                assert('Preserva quebra após pontuação',
+                    md6.indexOf('.\n') !== -1 || md6.indexOf('.\n\n') !== -1,
+                    'Encontrou: ' + md6);
+
+                // ── Teste 7: Remoção de linhas duplicadas ──
+                var md7 = postProcessLegalMarkdown('Esta linha está duplicada\nEsta linha está duplicada');
+                var occurrences = md7.split('Esta linha está duplicada').length - 1;
+                assert('Remove linhas duplicadas',
+                    occurrences === 1,
+                    'Ocorrências: ' + occurrences);
+
+                // ── Teste 8: Headings jurídicos ──
+                var md8 = postProcessLegalMarkdown('Art. 15 Dos direitos fundamentais');
+                assert('Promove artigo para heading',
+                    md8.indexOf('### Art. 15') !== -1,
+                    'Encontrou: ' + md8);
+
+                // ── Teste 9: Sanitização HTML - field codes ──
+                var html9 = '<p>Ver Erro! Indicador não definido. na seção 3.</p>';
+                var clean9 = sanitizeHtml(html9);
+                assert('Sanitiza field codes no HTML',
+                    clean9.indexOf('Erro!') === -1,
+                    'Encontrou: ' + clean9);
+
+                // ── Teste 10: Sanitização HTML - tabela de layout ──
+                var html10 = '<table><tr><td>' + 'x'.repeat(350) + '</td></tr></table>';
+                var clean10 = sanitizeHtml(html10);
+                assert('Converte tabela de layout para texto',
+                    clean10.indexOf('<table') === -1,
+                    'Encontrou table tag');
+
+                // ── Teste 11: Tabela real preservada ──
+                var html11 = '<table><tr><th>Nome</th><th>Cargo</th></tr>'
+                    + '<tr><td>João</td><td>Advogado</td></tr>'
+                    + '<tr><td>Maria</td><td>Juíza</td></tr></table>';
+                var clean11 = sanitizeHtml(html11);
+                assert('Preserva tabela real de dados',
+                    clean11.indexOf('<table') !== -1,
+                    'Tabela foi removida indevidamente');
+
+                // ── Teste 12: Remoção de números de página ──
+                var html12 = '<p>15</p><p>Conteúdo real</p><p>16</p>';
+                var clean12 = sanitizeHtml(html12);
+                assert('Remove parágrafos com apenas número de página',
+                    clean12.indexOf('>15<') === -1 && clean12.indexOf('Conteúdo real') !== -1,
+                    'Encontrou: ' + clean12);
+
+                // ── Teste 13: Tabelas degeneradas no Markdown ──
+                var md13 = postProcessLegalMarkdown('Texto\n| Col1 | Col2 |\n| --- | --- |\nMais texto');
+                assert('Remove tabela só com header',
+                    md13.indexOf('| Col1') === -1,
+                    'Encontrou: ' + md13);
+
+                // Resultado
+                var summary = '\n══════════════════════════════\n'
+                    + 'TESTES: ' + (passed + failed) + ' total, '
+                    + passed + ' passou, '
+                    + failed + ' falhou\n'
+                    + '══════════════════════════════\n';
+
+                console.log(summary);
+                results.forEach(function(r) { console.log(r); });
+
+                return { passed: passed, failed: failed, results: results };
+            };
 
             document.addEventListener('DOMContentLoaded', initApp);
         })();
