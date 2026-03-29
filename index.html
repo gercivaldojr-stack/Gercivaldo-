@@ -514,139 +514,55 @@
             // Sanitizar HTML gerado pelo Mammoth antes de enviar ao Turndown
             // Retorna um nó DOM (evita serializar/re-parsear)
             function sanitizeHtml(html) {
-                var container = document.createElement('div');
-                container.innerHTML = html;
+                // Sanitização via string (leve, sem manipulação DOM pesada)
+                // Evita corrupção da árvore de conteúdo que causava perda de texto
+                var clean = html;
 
-                // ── 1. Remover elementos com classes sentinela do styleMap ──
-                // Headers e footers marcados pelo Mammoth
-                container.querySelectorAll('.doc-header, .doc-footer').forEach(function(el) {
-                    el.parentNode.removeChild(el);
-                });
+                // ── 1. Remover field codes do Word (texto) ──
+                clean = clean
+                    .replace(/Erro!\s*Indicador\s*n[ãa]o\s*definido\.?/gi, '')
+                    .replace(/Error!\s*Bookmark\s*not\s*defined\.?/gi, '')
+                    .replace(/Erro!\s*Fonte\s*de\s*refer[eê]ncia\s*n[ãa]o\s*encontrada\.?/gi, '')
+                    .replace(/Error!\s*Reference\s*source\s*not\s*found\.?/gi, '');
 
-                // Notas de rodapé e notas de fim
+                // ── 2. Remover elementos com classes sentinela via regex ──
+                // Headers/footers
+                clean = clean.replace(/<p\s+class="doc-header"[^>]*>[\s\S]*?<\/p>/gi, '');
+                clean = clean.replace(/<p\s+class="doc-footer"[^>]*>[\s\S]*?<\/p>/gi, '');
+
+                // TOC
+                clean = clean.replace(/<p\s+class="doc-toc"[^>]*>[\s\S]*?<\/p>/gi, '');
+
+                // ── 3. Extrair notas de rodapé e reposicionar ao final ──
                 var footnotes = [];
-                container.querySelectorAll('.doc-footnote, .doc-endnote').forEach(function(el) {
-                    footnotes.push(el.textContent.trim());
-                    el.parentNode.removeChild(el);
+                clean = clean.replace(/<p\s+class="doc-footnote"[^>]*>([\s\S]*?)<\/p>/gi, function(match, content) {
+                    var tmp = document.createElement('span');
+                    tmp.innerHTML = content;
+                    footnotes.push(tmp.textContent.trim());
+                    return '';
+                });
+                clean = clean.replace(/<p\s+class="doc-endnote"[^>]*>([\s\S]*?)<\/p>/gi, function(match, content) {
+                    var tmp = document.createElement('span');
+                    tmp.innerHTML = content;
+                    footnotes.push(tmp.textContent.trim());
+                    return '';
                 });
 
-                // TOC marcado pelo styleMap
-                container.querySelectorAll('.doc-toc').forEach(function(el) {
-                    el.parentNode.removeChild(el);
-                });
+                // ── 4. Remover marcadores de página explícitos ──
+                clean = clean.replace(/<p[^>]*>\s*P[aá]gina\s+\d+\s+de\s+\d+\s*<\/p>/gi, '');
+                clean = clean.replace(/<p[^>]*>\s*Page\s+\d+\s+of\s+\d+\s*<\/p>/gi, '');
 
-                // ── 2. Remover field codes do Word ──
-                var walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, null, false);
-                var textNodes = [];
-                while (walker.nextNode()) textNodes.push(walker.currentNode);
-
-                var fieldPatterns = [
-                    /Erro!\s*Indicador\s*n[ãa]o\s*definido\.?/gi,
-                    /Error!\s*Bookmark\s*not\s*defined\.?/gi,
-                    /Erro!\s*Fonte\s*de\s*refer[eê]ncia\s*n[ãa]o\s*encontrada\.?/gi,
-                    /Error!\s*Reference\s*source\s*not\s*found\.?/gi,
-                    /\{\\?\s*REF\s+[^}]*\}/g,
-                    /\{\\?\s*PAGEREF\s+[^}]*\}/g,
-                    /\{\\?\s*TOC\s+[^}]*\}/g,
-                    /\{\\?\s*HYPERLINK\s+[^}]*\}/g,
-                    /\{\\?\s*SEQ\s+[^}]*\}/g,
-                    /\{\\?\s*MERGEFIELD\s+[^}]*\}/g,
-                    /PAGE\s*\\?\*\s*\w+/g
-                ];
-
-                textNodes.forEach(function(node) {
-                    var text = node.textContent;
-                    var changed = false;
-                    fieldPatterns.forEach(function(pattern) {
-                        if (pattern.test(text)) {
-                            text = text.replace(pattern, '');
-                            changed = true;
-                        }
-                    });
-                    if (changed) node.textContent = text;
-                });
-
-                // ── 3. Limpar sumário (TOC) por heurística de conteúdo ──
-                // (para documentos cujos estilos TOC não foram detectados pelo styleMap)
-                var allParagraphs = container.querySelectorAll('p');
-                var tocBuffer = [];
-
-                allParagraphs.forEach(function(p) {
-                    var text = p.textContent.trim();
-                    var isTocEntry = /[\.·]{3,}\s*\d+\s*$/.test(text) ||
-                                     /\t{2,}\d+\s*$/.test(text) ||
-                                     /\s{5,}\d+\s*$/.test(text);
-                    if (isTocEntry) tocBuffer.push(p);
-                });
-
-                // Se encontrou bloco de TOC significativo (3+ entradas), limpar
-                if (tocBuffer.length >= 3) {
-                    tocBuffer.forEach(function(p) {
-                        var text = p.textContent;
-                        text = text.replace(/[\.·]{3,}\s*\d+\s*$/, '').trim();
-                        text = text.replace(/\t+\d+\s*$/, '').trim();
-                        text = text.replace(/\s{5,}\d+\s*$/, '').trim();
-                        if (text.length > 0) {
-                            p.textContent = text;
-                        } else {
-                            p.parentNode.removeChild(p);
-                        }
-                    });
-                }
-
-                // ── 4. Converter tabelas de layout para divs ──
-                container.querySelectorAll('table').forEach(function(table) {
-                    if (isLayoutTable(table)) {
-                        var fragment = document.createDocumentFragment();
-                        table.querySelectorAll('td, th').forEach(function(cell) {
-                            // Mover os filhos da célula diretamente
-                            while (cell.firstChild) {
-                                fragment.appendChild(cell.firstChild);
-                            }
-                        });
-                        table.parentNode.replaceChild(fragment, table);
-                    }
-                });
-
-                // ── 5. Remover marcadores de página explícitos ──
-                // (apenas padrões inequívocos — evitar remover conteúdo legítimo)
-                allParagraphs = container.querySelectorAll('p');
-                allParagraphs.forEach(function(p) {
-                    var text = p.textContent.trim();
-
-                    // "Página X de Y" ou "Page X of Y" — inequivocamente paginação
-                    if (/^P[aá]gina\s+\d+\s+de\s+\d+$/i.test(text) ||
-                        /^Page\s+\d+\s+of\s+\d+$/i.test(text)) {
-                        p.parentNode.removeChild(p);
-                    }
-                });
-
-                // ── 7. Remover <br> consecutivos ──
-                var brs = container.querySelectorAll('br');
-                var prevBr = null;
-                brs.forEach(function(br) {
-                    if (prevBr && prevBr.nextSibling === br) {
-                        br.parentNode.removeChild(br);
-                    } else {
-                        prevBr = br;
-                    }
-                });
-
-                // ── 8. Adicionar notas de rodapé ao final (se houver) ──
+                // ── 5. Adicionar notas de rodapé ao final (se houver) ──
                 if (footnotes.length > 0) {
-                    var hr = document.createElement('hr');
-                    container.appendChild(hr);
+                    clean += '<hr>';
                     footnotes.forEach(function(note, idx) {
                         if (note) {
-                            var p = document.createElement('p');
-                            p.textContent = '[' + (idx + 1) + '] ' + note;
-                            container.appendChild(p);
+                            clean += '<p>[' + (idx + 1) + '] ' + note + '</p>';
                         }
                     });
                 }
 
-                // Retornar nó DOM (Turndown aceita DOM nodes diretamente)
-                return container;
+                return clean;
             }
 
             // ═══════════════════════════════════════════════════════
@@ -685,16 +601,29 @@
                 service.addRule('smartTables', {
                     filter: ['table'],
                     replacement: function(content, node) {
-                        var rows = node.querySelectorAll('tr');
-                        if (rows.length === 0) return content;
+                        // Iterar apenas <tr> filhos diretos (não descendentes de tabelas aninhadas)
+                        var directRows = [];
+                        var children = node.children;
+                        for (var c = 0; c < children.length; c++) {
+                            var child = children[c];
+                            if (child.tagName === 'TR') {
+                                directRows.push(child);
+                            } else if (child.tagName === 'THEAD' || child.tagName === 'TBODY' || child.tagName === 'TFOOT') {
+                                var subRows = child.children;
+                                for (var s = 0; s < subRows.length; s++) {
+                                    if (subRows[s].tagName === 'TR') directRows.push(subRows[s]);
+                                }
+                            }
+                        }
+                        if (directRows.length === 0) return content;
 
                         // Extrair dados estruturados
                         var headerRow = [];
                         var dataRows = [];
                         var maxCols = 0;
 
-                        rows.forEach(function(row, rowIdx) {
-                            var cells = row.querySelectorAll('td, th');
+                        directRows.forEach(function(row, rowIdx) {
+                            var cells = row.querySelectorAll(':scope > td, :scope > th');
                             var isHeader = row.querySelectorAll('th').length > 0;
                             var cellTexts = [];
 
@@ -1020,14 +949,13 @@
 
                     updateProgress(50, 'Sanitizando estrutura HTML...');
 
-                    // ETAPA 1: Sanitizar HTML (DOM-based)
-                    var cleanDom = sanitizeHtml(html);
+                    // ETAPA 1: Sanitizar HTML (string-based, evita corrupção DOM)
+                    var cleanHtml = sanitizeHtml(html);
 
                     updateProgress(65, 'Convertendo HTML para Markdown...');
 
-                    // ETAPA 2: Converter DOM sanitizado para Markdown
-                    // (passar nó DOM direto evita serializar/re-parsear)
-                    var mdContent = window.turndownService.turndown(cleanDom);
+                    // ETAPA 2: Converter HTML sanitizado para Markdown
+                    var mdContent = window.turndownService.turndown(cleanHtml);
 
                     updateProgress(75, 'Reconstruindo parágrafos...');
 
@@ -1377,81 +1305,80 @@
 
                 // ── Teste 9: Sanitização HTML - field codes ──
                 var html9 = '<p>Ver Erro! Indicador não definido. na seção 3.</p>';
-                var dom9 = sanitizeHtml(html9);
+                var str9 = sanitizeHtml(html9);
                 assert('Sanitiza field codes no HTML',
-                    dom9.textContent.indexOf('Erro!') === -1,
-                    'Encontrou: ' + dom9.textContent);
+                    str9.indexOf('Erro!') === -1,
+                    'Encontrou: ' + str9);
 
-                // ── Teste 10: Sanitização HTML - tabela de layout (1 linha, 1 célula) ──
+                // ── Teste 10: Sanitização preserva tabelas (tratadas pelo Turndown) ──
                 var html10 = '<table><tr><td><p>Texto simples</p></td></tr></table>';
-                var dom10 = sanitizeHtml(html10);
-                assert('Converte tabela wrapper (1x1) para texto',
-                    dom10.querySelector('table') === null,
-                    'Encontrou table tag');
+                var str10 = sanitizeHtml(html10);
+                assert('Preserva tabelas no sanitizeHtml (tratadas pelo Turndown)',
+                    str10.indexOf('<table>') !== -1,
+                    'Tabela removida indevidamente');
 
-                // ── Teste 10b: NÃO remover tabela de 2 colunas com conteúdo longo ──
+                // ── Teste 10b: Preserva tabela de 2 colunas com conteúdo longo ──
                 var html10b = '<table><tr><td>' + 'x'.repeat(350) + '</td><td>' + 'y'.repeat(350) + '</td></tr>'
                     + '<tr><td>Dados A</td><td>Dados B</td></tr></table>';
-                var dom10b = sanitizeHtml(html10b);
+                var str10b = sanitizeHtml(html10b);
                 assert('Preserva tabela de 2 colunas com conteúdo longo',
-                    dom10b.querySelector('table') !== null,
+                    str10b.indexOf('<table>') !== -1,
                     'Removeu tabela comparativa indevidamente');
 
                 // ── Teste 11: Tabela real preservada ──
                 var html11 = '<table><tr><th>Nome</th><th>Cargo</th></tr>'
                     + '<tr><td>João</td><td>Advogado</td></tr>'
                     + '<tr><td>Maria</td><td>Juíza</td></tr></table>';
-                var dom11 = sanitizeHtml(html11);
+                var str11 = sanitizeHtml(html11);
                 assert('Preserva tabela real de dados',
-                    dom11.querySelector('table') !== null,
+                    str11.indexOf('<table>') !== -1,
                     'Tabela foi removida indevidamente');
 
                 // ── Teste 12: Preservar números isolados (podem ser conteúdo) ──
                 var html12 = '<p>15</p><p>Conteúdo real</p><p>16</p>';
-                var dom12 = sanitizeHtml(html12);
-                var text12 = dom12.innerHTML;
+                var str12 = sanitizeHtml(html12);
                 assert('Preserva parágrafos com números (não agressivo)',
-                    text12.indexOf('Conteúdo real') !== -1,
-                    'Encontrou: ' + text12);
+                    str12.indexOf('Conteúdo real') !== -1,
+                    'Encontrou: ' + str12);
 
                 // ── Teste 12b: Remove "Página X de Y" ──
                 var html12b = '<p>Página 3 de 15</p><p>Conteúdo real</p>';
-                var dom12b = sanitizeHtml(html12b);
+                var str12b = sanitizeHtml(html12b);
                 assert('Remove Página X de Y',
-                    dom12b.textContent.indexOf('Página 3 de 15') === -1 &&
-                    dom12b.textContent.indexOf('Conteúdo real') !== -1,
-                    'Encontrou: ' + dom12b.textContent);
+                    str12b.indexOf('Página 3 de 15') === -1 &&
+                    str12b.indexOf('Conteúdo real') !== -1,
+                    'Encontrou: ' + str12b);
 
                 // ── Teste 14: Remoção de headers/footers por classe sentinela ──
                 var html14 = '<p class="doc-header">Cabeçalho da empresa</p><p>Texto real</p><p class="doc-footer">Página 1</p>';
-                var dom14 = sanitizeHtml(html14);
+                var str14 = sanitizeHtml(html14);
                 assert('Remove header/footer por classe sentinela',
-                    dom14.textContent.indexOf('Cabeçalho da empresa') === -1 &&
-                    dom14.textContent.indexOf('Texto real') !== -1,
-                    'Encontrou: ' + dom14.textContent);
+                    str14.indexOf('Cabeçalho da empresa') === -1 &&
+                    str14.indexOf('Texto real') !== -1,
+                    'Encontrou: ' + str14);
 
                 // ── Teste 15: Remoção de notas de rodapé por classe sentinela ──
                 var html15 = '<p>Texto principal</p><p class="doc-footnote">Nota: referência legal</p>';
-                var dom15 = sanitizeHtml(html15);
+                var str15 = sanitizeHtml(html15);
                 assert('Remove footnote inline e adiciona ao final',
-                    dom15.textContent.indexOf('Texto principal') !== -1 &&
-                    dom15.textContent.indexOf('[1] Nota: referência legal') !== -1,
-                    'Encontrou: ' + dom15.textContent);
+                    str15.indexOf('Texto principal') !== -1 &&
+                    str15.indexOf('[1] Nota: referência legal') !== -1,
+                    'Encontrou: ' + str15);
 
                 // ── Teste 16: Remoção de TOC por classe sentinela ──
                 var html16 = '<p class="doc-toc">Capítulo 1</p><p class="doc-toc">Capítulo 2</p><p>Corpo do texto</p>';
-                var dom16 = sanitizeHtml(html16);
+                var str16 = sanitizeHtml(html16);
                 assert('Remove TOC por classe sentinela',
-                    dom16.textContent.indexOf('Capítulo 1') === -1 &&
-                    dom16.textContent.indexOf('Corpo do texto') !== -1,
-                    'Encontrou: ' + dom16.textContent);
+                    str16.indexOf('Capítulo 1') === -1 &&
+                    str16.indexOf('Corpo do texto') !== -1,
+                    'Encontrou: ' + str16);
 
                 // ── Teste 17: Preserva superscript (não remover agressivamente) ──
                 var html17 = '<p>Conforme a lei<sup>1</sup> vigente</p>';
-                var dom17 = sanitizeHtml(html17);
+                var str17 = sanitizeHtml(html17);
                 assert('Preserva texto com superscript',
-                    dom17.textContent.indexOf('vigente') !== -1,
-                    'Encontrou: ' + dom17.innerHTML);
+                    str17.indexOf('vigente') !== -1,
+                    'Encontrou: ' + str17);
 
                 // ── Teste 13: Tabelas degeneradas no Markdown ──
                 var md13 = postProcessLegalMarkdown('Texto\n| Col1 | Col2 |\n| --- | --- |\nMais texto');
