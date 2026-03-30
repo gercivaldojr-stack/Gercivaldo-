@@ -715,62 +715,63 @@
             // ETAPA 3: PÓS-PROCESSAMENTO DO MARKDOWN
             // ═══════════════════════════════════════════════════════
 
-            // Rejunção iterativa de parágrafos quebrados por paginação
-            // Executa múltiplas passadas para tratar parágrafos quebrados em 3+ linhas
+            // Rejunção conservadora de parágrafos quebrados por paginação
+            // Apenas junta linhas que são CLARAMENTE continuação do parágrafo anterior
             function rejoinBrokenParagraphs(md) {
-                var maxIterations = 10;
-                var prev = md;
+                var lines = md.split('\n');
+                var result = [];
 
-                for (var iter = 0; iter < maxIterations; iter++) {
-                    var lines = prev.split('\n');
-                    var result = [];
+                for (var i = 0; i < lines.length; i++) {
+                    var line = lines[i];
+                    var nextLine = (i + 1 < lines.length) ? lines[i + 1] : null;
 
-                    for (var i = 0; i < lines.length; i++) {
-                        var line = lines[i];
-                        var nextLine = lines[i + 1];
+                    if (!nextLine) { result.push(line); break; }
 
-                        if (!nextLine) { result.push(line); break; }
+                    var trimmedLine = line.trimRight();
+                    var trimmedNext = nextLine.trim();
 
-                        // Verificar se a próxima linha é continuação da atual
-                        var trimmedLine = line.trimRight();
-                        var trimmedNext = nextLine.trim();
+                    // Condições para juntar (TODAS devem ser verdadeiras):
+                    var shouldJoin = (
+                        // 1. Linha atual tem conteúdo significativo
+                        trimmedLine.length > 15 &&
+                        // 2. Linha atual NÃO termina com pontuação de fim
+                        !/[.!?;:)\]"']\s*$/.test(trimmedLine) &&
+                        // 3. Linha atual termina com vírgula ou palavra (frase cortada)
+                        /[a-záàâãéêíóôõúüçña-z,]$/i.test(trimmedLine) &&
+                        // 4. Próxima linha começa com minúscula (continuação natural)
+                        /^[a-záàâãéêíóôõúüçñ]/.test(trimmedNext) &&
+                        // 5. Próxima linha tem conteúdo
+                        trimmedNext.length > 0 &&
+                        // 6. Nenhuma das duas é estrutura Markdown
+                        !/^#{1,6}\s/.test(trimmedLine) &&
+                        !/^#{1,6}\s/.test(trimmedNext) &&
+                        !/^\s*[-*]\s/.test(trimmedLine) &&
+                        !/^\s*[-*]\s/.test(trimmedNext) &&
+                        !/^\s*\d+[\.\)]\s/.test(trimmedLine) &&
+                        !/^\s*\d+[\.\)]\s/.test(trimmedNext) &&
+                        !/^\|/.test(trimmedLine) &&
+                        !/^\|/.test(trimmedNext) &&
+                        !/^>/.test(trimmedLine) &&
+                        !/^>/.test(trimmedNext) &&
+                        !/^---/.test(trimmedLine) &&
+                        !/^---/.test(trimmedNext) &&
+                        // 7. Não é uma linha em branco antes ou depois
+                        !/^\s*$/.test(trimmedLine) &&
+                        !/^\s*$/.test(trimmedNext) &&
+                        // 8. Não é um heading disfarçado (artigo, parágrafo, etc.)
+                        !/^(Art\.|§|Parágrafo|CAPÍTULO|SEÇÃO|TÍTULO|DO |DA |DOS |DAS )/i.test(trimmedNext) &&
+                        !/^\*\*/.test(trimmedNext)
+                    );
 
-                        var isContinuation = (
-                            // Linha atual não termina com pontuação de fim de frase
-                            trimmedLine.length > 0 &&
-                            !/[.!?:;)\]"']\s*$/.test(trimmedLine) &&
-                            // Linha atual não é estrutura Markdown
-                            !/^\s*$/.test(trimmedLine) &&
-                            !/^#{1,6}\s/.test(trimmedLine) &&
-                            !/^\s*[-*]\s/.test(trimmedLine) &&
-                            !/^\s*\d+\.\s/.test(trimmedLine) &&
-                            !/^\|/.test(trimmedLine) &&
-                            !/^>/.test(trimmedLine) &&
-                            !/^---/.test(trimmedLine) &&
-                            // Próxima linha começa com minúscula (continuação natural)
-                            /^[a-záàâãéêíóôõúüçñ]/.test(trimmedNext) &&
-                            trimmedNext.length > 0 &&
-                            // Próxima linha não é estrutura Markdown
-                            !/^\s*[-*]\s/.test(trimmedNext) &&
-                            !/^\s*\d+\.\s/.test(trimmedNext) &&
-                            !/^\|/.test(trimmedNext) &&
-                            !/^>/.test(trimmedNext)
-                        );
-
-                        if (isContinuation) {
-                            result.push(trimmedLine + ' ' + trimmedNext);
-                            i++; // pular próxima linha
-                        } else {
-                            result.push(line);
-                        }
+                    if (shouldJoin) {
+                        result.push(trimmedLine + ' ' + trimmedNext);
+                        i++; // pular próxima linha (já juntada)
+                    } else {
+                        result.push(line);
                     }
-
-                    var joined = result.join('\n');
-                    if (joined === prev) break; // sem mudanças, parar
-                    prev = joined;
                 }
 
-                return prev;
+                return result.join('\n');
             }
 
             // Pós-processamento de Markdown para documentos jurídicos
