@@ -526,24 +526,22 @@
                     .replace(/Error!\s*Reference\s*source\s*not\s*found\.?/gi, '');
 
                 // ── 2. Remover elementos com classes sentinela via regex ──
-                // Headers/footers
-                clean = clean.replace(/<p\s+class="doc-header"[^>]*>[\s\S]*?<\/p>/gi, '');
-                clean = clean.replace(/<p\s+class="doc-footer"[^>]*>[\s\S]*?<\/p>/gi, '');
-
-                // TOC
-                clean = clean.replace(/<p\s+class="doc-toc"[^>]*>[\s\S]*?<\/p>/gi, '');
+                // Usar padrão não-ganancioso e ancorado no </p> mais próximo
+                clean = clean.replace(/<p\s+class="doc-header"[^>]*>[^<]*(?:<(?!\/p>)[^<]*)*<\/p>/gi, '');
+                clean = clean.replace(/<p\s+class="doc-footer"[^>]*>[^<]*(?:<(?!\/p>)[^<]*)*<\/p>/gi, '');
+                clean = clean.replace(/<p\s+class="doc-toc"[^>]*>[^<]*(?:<(?!\/p>)[^<]*)*<\/p>/gi, '');
 
                 // ── 3. Extrair notas de rodapé e reposicionar ao final ──
                 var footnotes = [];
-                clean = clean.replace(/<p\s+class="doc-footnote"[^>]*>([\s\S]*?)<\/p>/gi, function(match, content) {
+                clean = clean.replace(/<p\s+class="doc-footnote"[^>]*>[^<]*(?:<(?!\/p>)[^<]*)*<\/p>/gi, function(match) {
                     var tmp = document.createElement('span');
-                    tmp.innerHTML = content;
+                    tmp.innerHTML = match.replace(/<\/?p[^>]*>/gi, '');
                     footnotes.push(tmp.textContent.trim());
                     return '';
                 });
-                clean = clean.replace(/<p\s+class="doc-endnote"[^>]*>([\s\S]*?)<\/p>/gi, function(match, content) {
+                clean = clean.replace(/<p\s+class="doc-endnote"[^>]*>[^<]*(?:<(?!\/p>)[^<]*)*<\/p>/gi, function(match) {
                     var tmp = document.createElement('span');
-                    tmp.innerHTML = content;
+                    tmp.innerHTML = match.replace(/<\/?p[^>]*>/gi, '');
                     footnotes.push(tmp.textContent.trim());
                     return '';
                 });
@@ -562,6 +560,7 @@
                     });
                 }
 
+                console.log('[DOCX Debug] sanitizeHtml: entrada=' + html.length + ' chars, saída=' + clean.length + ' chars, removido=' + (html.length - clean.length) + ' chars');
                 return clean;
             }
 
@@ -597,11 +596,11 @@
                     }
                 });
 
-                // Tabelas inteligentes — já pré-filtradas pelo sanitizador
+                // Tabelas inteligentes — detecta layout tables e preserva conteúdo
                 service.addRule('smartTables', {
                     filter: ['table'],
                     replacement: function(content, node) {
-                        // Iterar apenas <tr> filhos diretos (não descendentes de tabelas aninhadas)
+                        // ── Detectar tabela de layout (wrapper) e retornar conteúdo direto ──
                         var directRows = [];
                         var children = node.children;
                         for (var c = 0; c < children.length; c++) {
@@ -615,30 +614,50 @@
                                 }
                             }
                         }
+
+                        // Sem linhas → retornar conteúdo já convertido pelo Turndown
                         if (directRows.length === 0) return content;
 
-                        // Extrair dados estruturados
+                        // Contar colunas máximas (sem usar :scope que pode falhar)
+                        var maxCols = 0;
+                        directRows.forEach(function(row) {
+                            var colCount = 0;
+                            for (var k = 0; k < row.children.length; k++) {
+                                var tag = row.children[k].tagName;
+                                if (tag === 'TD' || tag === 'TH') colCount++;
+                            }
+                            if (colCount > maxCols) maxCols = colCount;
+                        });
+
+                        // ── Layout table: 1 coluna ou 1 linha com 1 célula ──
+                        // Retornar o conteúdo já convertido pelo Turndown (preserva formatação)
+                        if (maxCols <= 1) {
+                            console.log('[DOCX Debug] Tabela layout detectada (1 coluna, ' + directRows.length + ' linhas) — preservando conteúdo convertido (' + content.length + ' chars)');
+                            return '\n\n' + content + '\n\n';
+                        }
+
+                        // ── Tabela de dados: extrair e montar markdown table ──
                         var headerRow = [];
                         var dataRows = [];
-                        var maxCols = 0;
 
                         directRows.forEach(function(row, rowIdx) {
-                            var cells = row.querySelectorAll(':scope > td, :scope > th');
-                            var isHeader = row.querySelectorAll('th').length > 0;
+                            // Iterar filhos diretos manualmente (evita :scope)
                             var cellTexts = [];
+                            var hasThCells = false;
+                            for (var k = 0; k < row.children.length; k++) {
+                                var cell = row.children[k];
+                                var tag = cell.tagName;
+                                if (tag === 'TD' || tag === 'TH') {
+                                    if (tag === 'TH') hasThCells = true;
+                                    var text = cell.textContent.trim()
+                                        .replace(/\|/g, '\\|')
+                                        .replace(/\n+/g, ' ')
+                                        .replace(/\s{2,}/g, ' ');
+                                    cellTexts.push(text);
+                                }
+                            }
 
-                            cells.forEach(function(cell) {
-                                // Preservar conteúdo rico dentro das células
-                                var text = cell.textContent.trim()
-                                    .replace(/\|/g, '\\|')
-                                    .replace(/\n+/g, ' ')  // Aplainar quebras de linha internas
-                                    .replace(/\s{2,}/g, ' ');
-                                cellTexts.push(text);
-                            });
-
-                            if (cellTexts.length > maxCols) maxCols = cellTexts.length;
-
-                            if ((rowIdx === 0 && isHeader) || (rowIdx === 0 && dataRows.length === 0)) {
+                            if ((rowIdx === 0 && hasThCells) || (rowIdx === 0 && dataRows.length === 0)) {
                                 headerRow = cellTexts;
                             } else {
                                 dataRows.push(cellTexts);
@@ -668,14 +687,13 @@
                         lines.push('| ' + headerRow.join(' | ') + ' |');
                         lines.push('| ' + headerRow.map(function() { return '---'; }).join(' | ') + ' |');
                         dataRows.forEach(function(row) {
-                            // Pular linhas completamente vazias
                             var rowContent = row.join('').trim();
                             if (rowContent.length > 0) {
                                 lines.push('| ' + row.join(' | ') + ' |');
                             }
                         });
 
-                        // Se ficou só header + separador, não vale como tabela
+                        // Se ficou só header + separador, retornar como texto
                         if (lines.length <= 2) return headerRow.join(' — ');
 
                         return '\n\n' + lines.join('\n') + '\n\n';
@@ -949,23 +967,90 @@
 
                     updateProgress(50, 'Sanitizando estrutura HTML...');
 
+                    // Debug: tamanho do HTML bruto
+                    console.log('[DOCX Debug] ═══ PIPELINE DE CONVERSÃO ═══');
+                    console.log('[DOCX Debug] 0. HTML do Mammoth: ' + html.length + ' chars');
+                    console.log('[DOCX Debug] 0. HTML preview: ' + html.substring(0, 300) + '...');
+
                     // ETAPA 1: Sanitizar HTML (string-based, evita corrupção DOM)
                     var cleanHtml = sanitizeHtml(html);
+                    console.log('[DOCX Debug] 1. Após sanitizeHtml: ' + cleanHtml.length + ' chars');
 
                     updateProgress(65, 'Convertendo HTML para Markdown...');
 
                     // ETAPA 2: Converter HTML sanitizado para Markdown
                     var mdContent = window.turndownService.turndown(cleanHtml);
+                    console.log('[DOCX Debug] 2. Após Turndown: ' + mdContent.length + ' chars');
+                    if (mdContent.length < 100) {
+                        console.warn('[DOCX Debug] 2. ALERTA: Turndown produziu muito pouco texto!');
+                        console.warn('[DOCX Debug] 2. Conteúdo completo: ' + mdContent);
+                    }
+
+                    // ── Proteção: se Turndown perdeu conteúdo, usar fallback ──
+                    if (mdContent.length < cleanHtml.length * 0.05 && cleanHtml.length > 500) {
+                        console.warn('[DOCX Debug] FALLBACK ATIVADO: Turndown perdeu >95% do conteúdo. Usando conversão simples.');
+                        // Fallback: converter HTML para texto de forma simples
+                        var fallbackDiv = document.createElement('div');
+                        fallbackDiv.innerHTML = cleanHtml;
+                        // Converter headings
+                        fallbackDiv.querySelectorAll('h1,h2,h3,h4,h5,h6').forEach(function(h) {
+                            var level = parseInt(h.tagName.charAt(1));
+                            var prefix = '';
+                            for (var l = 0; l < level; l++) prefix += '#';
+                            h.outerHTML = '\n\n' + prefix + ' ' + h.textContent.trim() + '\n\n';
+                        });
+                        // Converter parágrafos
+                        fallbackDiv.querySelectorAll('p').forEach(function(p) {
+                            p.outerHTML = '\n\n' + p.textContent.trim() + '\n\n';
+                        });
+                        // Converter strong/em
+                        fallbackDiv.querySelectorAll('strong,b').forEach(function(el) {
+                            el.outerHTML = '**' + el.textContent + '**';
+                        });
+                        fallbackDiv.querySelectorAll('em,i').forEach(function(el) {
+                            el.outerHTML = '*' + el.textContent + '*';
+                        });
+                        // Converter listas
+                        fallbackDiv.querySelectorAll('li').forEach(function(li) {
+                            li.outerHTML = '\n- ' + li.textContent.trim();
+                        });
+                        // Extrair tabelas como texto
+                        fallbackDiv.querySelectorAll('table').forEach(function(table) {
+                            var rows = table.querySelectorAll('tr');
+                            var md = '\n\n';
+                            var colCount = 0;
+                            rows.forEach(function(row, idx) {
+                                var cells = row.querySelectorAll('td, th');
+                                var line = '|';
+                                cells.forEach(function(c) { line += ' ' + c.textContent.trim().replace(/\|/g, '\\|').replace(/\n+/g, ' ') + ' |'; });
+                                md += line + '\n';
+                                if (idx === 0) {
+                                    colCount = cells.length;
+                                    var sep = '|';
+                                    for (var j = 0; j < colCount; j++) sep += ' --- |';
+                                    md += sep + '\n';
+                                }
+                            });
+                            table.outerHTML = md + '\n\n';
+                        });
+                        mdContent = fallbackDiv.textContent
+                            .replace(/\n{3,}/g, '\n\n')
+                            .trim();
+                        console.log('[DOCX Debug] 2b. Fallback produziu: ' + mdContent.length + ' chars');
+                    }
 
                     updateProgress(75, 'Reconstruindo parágrafos...');
 
                     // ETAPA 3a: Rejunção iterativa de parágrafos fragmentados
                     var mdRejoined = rejoinBrokenParagraphs(mdContent);
+                    console.log('[DOCX Debug] 3. Após rejoinBrokenParagraphs: ' + mdRejoined.length + ' chars');
 
                     updateProgress(85, 'Aplicando pós-processamento jurídico...');
 
                     // ETAPA 3b: Pós-processamento
                     var processedMarkdown = postProcessLegalMarkdown(mdRejoined);
+                    console.log('[DOCX Debug] 4. Após postProcessLegalMarkdown: ' + processedMarkdown.length + ' chars');
+                    console.log('[DOCX Debug] ═══ FIM DO PIPELINE ═══');
                     state.currentMarkdown = processedMarkdown;
 
                     // Atualizar previews
