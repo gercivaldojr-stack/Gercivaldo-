@@ -139,6 +139,18 @@ class TestRejoinBrokenParagraphs:
         result = rejoin_broken_paragraphs(text)
         assert "completa.\nSegunda" in result or "completa." in result
 
+    def test_joins_line_ending_with_parenthesis(self):
+        """Linhas que terminam com ) devem ser unidas se a próxima é continuação."""
+        text = "conforme art. 5º (CF/88)\ndo ordenamento jurídico brasileiro."
+        result = rejoin_broken_paragraphs(text)
+        assert "(CF/88) do ordenamento" in result
+
+    def test_joins_line_starting_with_dash(self):
+        """Travessão no início de linha não deve impedir junção."""
+        text = "O autor sofreu danos\n- materiais e morais -\nde grande monta."
+        result = rejoin_broken_paragraphs(text)
+        assert "danos - materiais" in result or "danos\n- materiais" in result
+
 
 class TestRemoveEreaderBoilerplate:
     def test_removes_ereader_instructions(self):
@@ -168,6 +180,23 @@ class TestRemoveEreaderBoilerplate:
         text = "Texto curto."
         assert remove_ereader_boilerplate(text) == text
 
+    def test_removes_boilerplate_beyond_line_80(self):
+        """Boilerplate nas linhas 90+ deve ser removido (scan_limit=150)."""
+        lines = ["Texto qualquer do documento."] * 90
+        lines += [
+            "Como usar o epub reader",
+            "Escolher fonte e tamanho da letra",
+            "Alterar layout e luminosidade do display",
+            "Fazer buscas no texto",
+            "",
+            "CAPÍTULO I - Introdução ao Direito Empresarial",
+        ]
+        text = "\n".join(lines)
+        result = remove_ereader_boilerplate(text)
+        assert "epub" not in result.lower()
+        assert "luminosidade" not in result
+        assert "CAPÍTULO I" in result
+
 
 class TestRemoveCorruptedGlyphs:
     def test_removes_sinhala_glyphs(self):
@@ -194,6 +223,14 @@ class TestRemoveCorruptedGlyphs:
         text = "Artigo 5° da CF/88"
         result = remove_corrupted_glyphs(text)
         assert "Artigo 5" in result
+
+    def test_cleans_inline_glyphs_mixed_line(self):
+        """Linha mista com glyphs inline deve ter glyphs removidos mas texto latino preservado."""
+        text = "O direito empresarial Sමිමිකුකාටමාම regula atividades"
+        result = remove_corrupted_glyphs(text)
+        assert "O direito empresarial" in result
+        assert "regula atividades" in result
+        assert "මිමි" not in result
 
     def test_preserves_empty_lines(self):
         text = "Texto\n\n\nMais texto"
