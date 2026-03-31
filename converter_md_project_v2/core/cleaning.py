@@ -190,8 +190,8 @@ def _ends_sentence(line: str) -> bool:
     s = line.rstrip()
     if not s:
         return True
-    # Pontuação forte de final de sentença
-    return s[-1] in ".!?;:"
+    # Pontuação forte de final de sentença (sem ':' — dois-pontos é continuação em texto jurídico)
+    return s[-1] in ".!?;"
 
 
 def rejoin_broken_paragraphs(text: str) -> str:
@@ -204,7 +204,7 @@ def rejoin_broken_paragraphs(text: str) -> str:
     Linhas protegidas (nunca unidas):
     - Headings markdown (#)
     - Linhas em branco
-    - Listas (-, *, >)
+    - Listas explícitas (*, >) — travessão (-) NÃO é protegido (comum em texto jurídico)
     - Linhas todas em maiúsculas (prováveis headings jurídicos)
     - Linhas que começam com enumeração (a), b), 1., Art.)
     """
