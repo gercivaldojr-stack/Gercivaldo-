@@ -120,7 +120,7 @@ def _extract_docx(file_bytes: bytes, file_path: str | None = None) -> str:
         else:
             parts.append(text)
 
-    return "\n\n".join(parts)
+    return "\n".join(parts)
 
 
 def _extract_txt(file_bytes: bytes, file_path: str | None = None) -> str:

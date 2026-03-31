@@ -178,9 +178,10 @@ def _is_block_boundary(line: str) -> bool:
     # Separadores markdown
     if s == "---" or s == "***":
         return True
-    # Linhas toda em maiúsculas curtas são prováveis headings não processados
-    if s.isupper() and len(s) < 100:
-        return True
+        # FIX: Linhas em maiúsculas curtas com < 4 palavras são provavelmente
+            # fragmentos de ementa, não headings reais — permitir rejunção
+                if s.isupper() and len(s) < 100 and len(s.split()) >= 4:
+                        return True
     return False
 
 
@@ -189,8 +190,8 @@ def _ends_sentence(line: str) -> bool:
     s = line.rstrip()
     if not s:
         return True
-    # Pontuação forte de final de sentença
-    return s[-1] in ".!?;:"
+    # Pontuação forte de final de sentença (sem ':' — dois-pontos é continuação em texto jurídico)
+    return s[-1] in ".!?;"
 
 
 def rejoin_broken_paragraphs(text: str) -> str:
@@ -203,7 +204,7 @@ def rejoin_broken_paragraphs(text: str) -> str:
     Linhas protegidas (nunca unidas):
     - Headings markdown (#)
     - Linhas em branco
-    - Listas (-, *, >)
+    - Listas explícitas (*, >) — travessão (-) NÃO é protegido (comum em texto jurídico)
     - Linhas todas em maiúsculas (prováveis headings jurídicos)
     - Linhas que começam com enumeração (a), b), 1., Art.)
     """
@@ -223,7 +224,7 @@ def rejoin_broken_paragraphs(text: str) -> str:
             continue
 
         # Se a linha atual começa com padrão de enumeração, flush e iniciar novo
-        if re.match(r"^([a-z]\)|[a-z]\.|[ivxlc]+\)|[IVXLC]+\)|\d+\)|\d+\.)\s+", stripped):
+        if re.match(r"^([a-z]\)|[a-z]\.|[ivxlc]+\)|[IVXLC]+\)|\d+\)|\d+\.|[IVXLC]+\s*[-–—]\s+|§\s*\d+)\s*", stripped):
             if buffer:
                 result.append(buffer)
                 buffer = ""
