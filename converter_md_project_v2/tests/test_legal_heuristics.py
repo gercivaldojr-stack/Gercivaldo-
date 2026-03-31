@@ -5,7 +5,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from core.legal_heuristics import apply_legal_heuristics, remove_sumario
+from core.legal_heuristics import (
+    apply_legal_heuristics,
+    remove_sumario,
+    _fix_heading_hierarchy,
+    _format_enumeration_as_list,
+)
 
 
 class TestForenseMode:
@@ -135,6 +140,74 @@ class TestForenseMode:
         text = "Da análise dos documentos juntados aos autos, verifica-se que o réu não comprovou suas alegações de forma satisfatória perante o juízo"
         result = apply_legal_heuristics(text, mode="forense")
         assert not result.startswith("#")
+
+    def test_acao_revisional_is_h1(self):
+        """Bug 2: AÇÃO REVISIONAL deve virar H1."""
+        text = "AÇÃO REVISIONAL DE CONTRATOS DE CRÉDITO RURAL"
+        result = apply_legal_heuristics(text, mode="forense")
+        assert "# AÇÃO REVISIONAL" in result
+        assert not result.strip().startswith("## ")
+
+    def test_acao_indenizacao_is_h1(self):
+        text = "AÇÃO DE INDENIZAÇÃO POR DANOS MORAIS"
+        result = apply_legal_heuristics(text, mode="forense")
+        assert "# AÇÃO DE INDENIZAÇÃO" in result
+
+    def test_acao_declaratoria_is_h1(self):
+        text = "AÇÃO DECLARATÓRIA DE NULIDADE"
+        result = apply_legal_heuristics(text, mode="forense")
+        assert "# AÇÃO DECLARATÓRIA" in result
+
+    def test_acao_cautelar_is_h1(self):
+        text = "AÇÃO CAUTELAR DE EXIBIÇÃO DE DOCUMENTOS"
+        result = apply_legal_heuristics(text, mode="forense")
+        assert "# AÇÃO CAUTELAR" in result
+
+
+class TestHeadingHierarchy:
+    def test_first_h2_promoted_to_h1(self):
+        """Bug 3: Se primeiro heading é ##, promover para #."""
+        text = "## EXCELENTÍSSIMO SENHOR JUIZ\n\nTexto.\n\n## DOS FATOS\n\nFatos."
+        result = _fix_heading_hierarchy(text)
+        lines = result.split("\n")
+        assert lines[0].startswith("# ")
+        assert "EXCELENTÍSSIMO" in lines[0]
+
+    def test_h1_already_present(self):
+        """Se já existe H1, não promover nada."""
+        text = "# PETIÇÃO INICIAL\n\n## EXCELENTÍSSIMO SENHOR JUIZ\n\nTexto."
+        result = _fix_heading_hierarchy(text)
+        assert result == text
+
+    def test_acao_before_enderecamento(self):
+        """Bug 2+3: AÇÃO H1 antes de EXCELENTÍSSIMO H2 preserva hierarquia."""
+        text = "AÇÃO REVISIONAL DE CRÉDITO RURAL\n\nEXCELENTÍSSIMO SENHOR DOUTOR JUIZ\n\nDOS FATOS\n\nOs fatos."
+        result = apply_legal_heuristics(text, mode="forense")
+        lines = [l for l in result.split("\n") if l.strip().startswith("#")]
+        assert lines[0].startswith("# ")
+        assert "AÇÃO REVISIONAL" in lines[0]
+        assert lines[1].startswith("## ")
+        assert "EXCELENTÍSSIMO" in lines[1]
+
+
+class TestEnumerationFormatting:
+    def test_letter_items_become_list(self):
+        """Bug 5: Itens a), b) devem virar lista markdown."""
+        text = "## DOS PEDIDOS\n\na) Concessão de tutela\nb) Indenização por danos"
+        result = _format_enumeration_as_list(text)
+        assert "- **a)** Concessão" in result
+        assert "- **b)** Indenização" in result
+
+    def test_number_items_become_list(self):
+        text = "1) Primeiro pedido\n2) Segundo pedido"
+        result = _format_enumeration_as_list(text)
+        assert "- **1)** Primeiro" in result
+        assert "- **2)** Segundo" in result
+
+    def test_headings_preserved(self):
+        text = "## DOS PEDIDOS"
+        result = _format_enumeration_as_list(text)
+        assert result == "## DOS PEDIDOS"
 
 
 class TestDoutrinaMode:

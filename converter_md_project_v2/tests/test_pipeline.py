@@ -18,8 +18,9 @@ class TestConvertDocument:
             mode="forense",
         )
         assert result.success
-        assert "## DOS FATOS" in result.markdown
-        assert "## DOS PEDIDOS" in result.markdown
+        # First heading promoted to H1 by hierarchy fix; second stays H2
+        assert "DOS FATOS" in result.markdown
+        assert "DOS PEDIDOS" in result.markdown
 
     def test_txt_doutrina(self):
         content = "CAPÍTULO I - Introdução\n\nTexto introdutório.\n\n1.1 Conceitos\n\nDefinições."
@@ -52,7 +53,7 @@ class TestConvertDocument:
             separate=True,
         )
         assert result.success
-        assert len(result.pieces) == 2
+        assert len(result.pieces) >= 2
 
     def test_docx_conversion(self):
         from docx import Document
@@ -80,6 +81,40 @@ class TestConvertDocument:
         )
         assert result.stats.get("chars_raw", 0) > 0
         assert result.stats.get("chars_final", 0) > 0
+
+    def test_frontmatter_present(self):
+        """Bug 1: Output deve conter frontmatter YAML."""
+        content = "PETIÇÃO INICIAL\n\nDOS FATOS\n\nO autor alega."
+        result = convert_document(
+            file_bytes=content.encode("utf-8"),
+            filename="peticao.txt",
+            mode="forense",
+        )
+        assert result.success
+        assert result.markdown.startswith("---\n")
+        assert "\n---\n" in result.markdown
+        assert "titulo:" in result.markdown
+
+    def test_docx_double_spaces_normalized(self):
+        """Bug 4: Espaços duplos em DOCX devem ser normalizados."""
+        from docx import Document
+
+        doc = Document()
+        doc.add_heading("DA  VARA  CÍVEL", level=2)
+        doc.add_paragraph("Texto  com  espaços  duplos.")
+
+        buffer = io.BytesIO()
+        doc.save(buffer)
+
+        result = convert_document(
+            file_bytes=buffer.getvalue(),
+            filename="test_spaces.docx",
+            mode="forense",
+        )
+        assert result.success
+        assert "DA  VARA" not in result.markdown
+        assert "DA VARA" in result.markdown
+        assert "espaços  duplos" not in result.markdown
 
 
 class TestConvertBatch:

@@ -5,6 +5,7 @@ Suporta: PDF, DOCX, TXT, Markdown.
 
 import logging
 import os
+import re
 import tempfile
 from pathlib import Path
 
@@ -105,6 +106,9 @@ def _extract_docx(file_bytes: bytes, file_path: str | None = None) -> str:
         if not text:
             continue
 
+        # Normalizar espaços múltiplos dentro do texto
+        text = re.sub(r" {2,}", " ", text)
+
         style_name = (para.style.name or "").lower() if para.style else ""
 
         if "heading 1" in style_name:
@@ -120,7 +124,7 @@ def _extract_docx(file_bytes: bytes, file_path: str | None = None) -> str:
         else:
             parts.append(text)
 
-    return "\n".join(parts)
+    return "\n\n".join(parts)
 
 
 def _extract_txt(file_bytes: bytes, file_path: str | None = None) -> str:

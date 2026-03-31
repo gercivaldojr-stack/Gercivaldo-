@@ -178,10 +178,9 @@ def _is_block_boundary(line: str) -> bool:
     # Separadores markdown
     if s == "---" or s == "***":
         return True
-        # FIX: Linhas em maiúsculas curtas com < 4 palavras são provavelmente
-            # fragmentos de ementa, não headings reais — permitir rejunção
-                if s.isupper() and len(s) < 100 and len(s.split()) >= 4:
-                        return True
+    # Linhas toda em maiúsculas com 4+ palavras são prováveis headings
+    if s.isupper() and len(s) < 100 and len(s.split()) >= 4:
+        return True
     return False
 
 

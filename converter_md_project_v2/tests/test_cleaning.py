@@ -122,10 +122,11 @@ class TestRejoinBrokenParagraphs:
         assert "completo. Parágrafo" not in result
 
     def test_preserves_uppercase_lines(self):
-        text = "DOS FATOS\nO autor alega que sofreu danos."
+        """Uppercase lines with 4+ words are block boundaries."""
+        text = "FUNDAMENTAÇÃO JURÍDICA DO CASO\nO autor alega que sofreu danos."
         result = rejoin_broken_paragraphs(text)
-        assert "DOS FATOS" in result
-        assert "DOS FATOS O autor" not in result
+        assert "FUNDAMENTAÇÃO JURÍDICA DO CASO" in result
+        assert "DO CASO O autor" not in result
 
     def test_preserves_enumeration(self):
         text = "a) primeiro item do pedido\nb) segundo item do pedido"
