@@ -12,9 +12,8 @@ logger = logging.getLogger(__name__)
 # Padrões de headings jurídicos — modo forense
 # ============================================================
 
+# H1: títulos de peças processuais (tipo do documento)
 FORENSE_H1_PATTERNS = [
-    r"^(EXCELENTÍSSIM[OA]\s+SENHOR[A]?\s+.*)",
-    r"^(AO\s+JUÍZ[OA]?\s+.*)",
     r"^(PETIÇÃO\s+INICIAL.*)",
     r"^(CONTESTAÇÃO.*)",
     r"^(SENTENÇA.*)",
@@ -24,6 +23,15 @@ FORENSE_H1_PATTERNS = [
     r"^(APELAÇÃO.*)",
     r"^(MANDADO\s+DE\s+SEGURANÇA.*)",
     r"^(HABEAS\s+CORPUS.*)",
+]
+
+# H2 de endereçamento (não são títulos de peça, são cabeçalhos de cortesia)
+FORENSE_ENDERECAMENTO_PATTERNS = [
+    r"^(EXCELENTÍSSIM[OA]\s+SENHOR[A]?\s+.*)",
+    r"^(AO\s+JUÍZ[OA]?\s+.*)",
+    r"^(AO\s+DOUTOR\s+JUIZ.*)",
+    r"^(AO\s+MERITÍSSIMO\s+.*)",
+    r"^(AO\s+MM\.?\s+JUIZ.*)",
 ]
 
 FORENSE_H2_PATTERNS = [
@@ -51,9 +59,27 @@ FORENSE_H2_PATTERNS = [
 ]
 
 FORENSE_H3_PATTERNS = [
-    r"^(\d+\.\s+.*)",
-    r"^([a-z]\)\s+.*)",
     r"^(Art\.\s*\d+.*)",
+]
+
+# Padrões de subseções forenses (Da/Do/Das/Dos + substantivo com maiúscula)
+# Ex: "Da responsabilidade objetiva do Réu", "Do dano moral in re ipsa"
+FORENSE_H3_SUBSECTION_PATTERNS = [
+    r"^(Da\s+[a-záéíóúàâêôãõç].*)",
+    r"^(Do\s+[a-záéíóúàâêôãõç].*)",
+    r"^(Das\s+[a-záéíóúàâêôãõç].*)",
+    r"^(Dos\s+[a-záéíóúàâêôãõç].*)",
+    r"^(Doe?\s+[A-ZÁÉÍÓÚÀÂÊÔÃÕÇ][a-záéíóúàâêôãõç].*)",
+]
+
+# Padrões de enumeração que NÃO devem virar heading (são itens de lista)
+ENUMERATION_PATTERNS = [
+    r"^[a-z]\)\s+",         # a) texto, b) texto
+    r"^[a-z]\.\s+",         # a. texto, b. texto
+    r"^[ivxlc]+\)\s+",      # i) texto, ii) texto
+    r"^[IVXLC]+\)\s+",      # I) texto, II) texto
+    r"^\d+\)\s+",           # 1) texto, 2) texto
+    r"^\d+\.\s+",           # 1. texto, 2. texto
 ]
 
 # ============================================================
@@ -126,22 +152,43 @@ def apply_legal_heuristics(text: str, mode: str = "forense") -> str:
     return "\n".join(result)
 
 
+def _is_enumeration(line: str) -> bool:
+    """Verifica se a linha é um item de enumeração (a), b), 1., etc.)."""
+    return any(re.match(p, line) for p in ENUMERATION_PATTERNS)
+
+
 def _apply_forense(line: str) -> str:
     """Aplica padrões forenses a uma linha."""
     upper_line = line.upper().strip()
 
+    # H1: títulos de peças processuais
     for pattern in FORENSE_H1_PATTERNS:
         if re.match(pattern, upper_line, re.IGNORECASE):
             return f"# {line}"
 
+    # H2: endereçamento ao juiz
+    for pattern in FORENSE_ENDERECAMENTO_PATTERNS:
+        if re.match(pattern, upper_line, re.IGNORECASE):
+            return f"## {line}"
+
+    # H2: seções principais (DOS FATOS, DO DIREITO, etc.)
     for pattern in FORENSE_H2_PATTERNS:
         if re.match(pattern, upper_line, re.IGNORECASE):
             return f"## {line}"
 
+    # Ignorar itens de enumeração — nunca viram heading
+    if _is_enumeration(line):
+        return line
+
+    # H3: subseções Da/Do/Das/Dos (linhas curtas, < 100 chars)
+    if len(line) < 100:
+        for pattern in FORENSE_H3_SUBSECTION_PATTERNS:
+            if re.match(pattern, line):
+                return f"### {line}"
+
+    # H3: artigos de lei
     for pattern in FORENSE_H3_PATTERNS:
         if re.match(pattern, line, re.IGNORECASE):
-            # Evitar falso positivo: linhas longas com número no início
-            # provavelmente são parágrafos numerados, não headings
             if len(line) > 200:
                 return line
             return f"### {line}"
