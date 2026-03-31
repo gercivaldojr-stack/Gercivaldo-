@@ -169,9 +169,16 @@ def _is_block_boundary(line: str) -> bool:
     s = line.strip()
     if not s:
         return True
-    if s.startswith(("#", "-", "*", ">", "---", "```")):
+    # Headings markdown
+    if s.startswith("#"):
         return True
-    # Linhas toda em maiúsculas curtas são provavelmente headings ainda não processados
+    # Listas markdown explícitas (*, >) mas NÃO travessão (-) que é comum em texto jurídico
+    if s.startswith(("* ", "> ", "```")):
+        return True
+    # Separadores markdown
+    if s == "---" or s == "***":
+        return True
+    # Linhas toda em maiúsculas curtas são prováveis headings não processados
     if s.isupper() and len(s) < 100:
         return True
     return False
@@ -182,7 +189,8 @@ def _ends_sentence(line: str) -> bool:
     s = line.rstrip()
     if not s:
         return True
-    return s[-1] in ".!?;:" or s.endswith('"""') or s.endswith(")")
+    # Pontuação forte de final de sentença
+    return s[-1] in ".!?;:"
 
 
 def rejoin_broken_paragraphs(text: str) -> str:
@@ -244,48 +252,56 @@ def rejoin_broken_paragraphs(text: str) -> str:
 def remove_ereader_boilerplate(text: str) -> str:
     """Remove blocos de instruções de e-reader/epub do início do documento.
 
-    Analisa as primeiras ~60 linhas do documento. Se encontrar uma
-    concentração de palavras-chave típicas de instruções de leitor
-    digital, remove o bloco inteiro até encontrar conteúdo real.
+    Analisa as primeiras 150 linhas. Se encontrar 3+ linhas com keywords
+    típicas de leitor digital, remove desde a primeira keyword até a
+    última, incluindo linhas em branco e linhas curtas ao redor.
     """
     lines = text.split("\n")
     if len(lines) < 5:
         return text
 
-    # Analisar apenas o início do documento (primeiras 80 linhas)
-    scan_limit = min(80, len(lines))
-    cut_point = 0
-    keyword_window = 0
+    scan_limit = min(150, len(lines))
+    first_keyword_line = -1
     last_keyword_line = -1
+    keyword_count = 0
 
     for i in range(scan_limit):
         lower = lines[i].strip().lower()
         if not lower:
             continue
 
-        has_keyword = any(kw in lower for kw in EREADER_KEYWORDS)
-        if has_keyword:
-            keyword_window += 1
+        if any(kw in lower for kw in EREADER_KEYWORDS):
+            keyword_count += 1
+            if first_keyword_line == -1:
+                first_keyword_line = i
             last_keyword_line = i
 
-    # Se encontramos 3+ linhas com keywords no início, remover até a última
-    if keyword_window >= 3 and last_keyword_line > 0:
-        # Avançar até a próxima linha em branco depois do bloco de boilerplate
-        cut_point = last_keyword_line + 1
-        while cut_point < len(lines) and lines[cut_point].strip():
-            # Se a linha seguinte não tem keyword e parece conteúdo real, parar
-            lower = lines[cut_point].strip().lower()
-            if not any(kw in lower for kw in EREADER_KEYWORDS) and len(lines[cut_point].strip()) > 40:
+    if keyword_count < 3 or first_keyword_line == -1:
+        return text
+
+    # Cortar desde a primeira keyword line até após a última
+    cut_start = first_keyword_line
+    cut_end = last_keyword_line + 1
+
+    # Avançar cut_end para incluir linhas residuais curtas após o bloco
+    while cut_end < len(lines):
+        stripped = lines[cut_end].strip()
+        # Parar quando encontrar conteúdo real (linha longa sem keywords)
+        if stripped and len(stripped) > 40:
+            lower = stripped.lower()
+            if not any(kw in lower for kw in EREADER_KEYWORDS):
                 break
-            cut_point += 1
+        # Linhas em branco ou curtas: incluir na remoção
+        if not stripped or len(stripped) < 40:
+            cut_end += 1
+            continue
+        break
 
-        logger.info(
-            "Removidas %d linhas de boilerplate de e-reader no início do documento",
-            cut_point,
-        )
-        return "\n".join(lines[cut_point:])
-
-    return text
+    logger.info(
+        "Removidas linhas %d-%d de boilerplate de e-reader (%d keywords)",
+        cut_start, cut_end, keyword_count,
+    )
+    return "\n".join(lines[:cut_start] + lines[cut_end:])
 
 
 def _latin_ratio(text: str) -> float:
@@ -320,10 +336,13 @@ def _latin_ratio(text: str) -> float:
 
 
 def remove_corrupted_glyphs(text: str) -> str:
-    """Remove linhas compostas majoritariamente por caracteres não-latinos.
+    """Remove caracteres não-latinos corrompidos do texto.
 
-    Detecta linhas com glyphs de scripts estrangeiros (Sinhala, CJK, Arabic, etc.)
-    que são resíduos de fontes especiais ou imagens no PDF.
+    Dois modos de atuação:
+    1. Linhas com >30% de letras não-latinas: remove a linha inteira.
+    2. Linhas mistas: remove apenas os caracteres não-latinos inline,
+       preservando o texto latino ao redor.
+
     Preserva acentuação portuguesa (À-ÿ) e caracteres latinos normais.
     """
     lines = text.split("\n")
@@ -332,22 +351,7 @@ def remove_corrupted_glyphs(text: str) -> str:
     for line in lines:
         stripped = line.strip()
 
-        # Linhas vazias ou curtas: preservar
         if len(stripped) < 3:
-            cleaned.append(line)
-            continue
-
-        # Verificação rápida: se contém caracteres fora do range latino básico+estendido
-        has_non_latin = False
-        for ch in stripped:
-            cp = ord(ch)
-            # Fora do range ASCII + Latin Extended + Latin Extended Additional
-            # e não é espaço/pontuação/dígito
-            if cp > 0x024F and not ch.isspace() and not ch.isdigit() and unicodedata.category(ch).startswith("L"):
-                has_non_latin = True
-                break
-
-        if not has_non_latin:
             cleaned.append(line)
             continue
 
@@ -355,17 +359,38 @@ def remove_corrupted_glyphs(text: str) -> str:
         non_latin_count = 0
         letter_count = 0
         for ch in stripped:
-            if not ch.isspace() and unicodedata.category(ch).startswith("L"):
+            if ch.isspace():
+                continue
+            cat = unicodedata.category(ch)
+            if cat.startswith("L"):
                 letter_count += 1
-                cp = ord(ch)
-                if cp > 0x024F:
+                if ord(ch) > 0x024F:
                     non_latin_count += 1
 
-        # Se > 30% das letras são não-latinas, remover a linha
-        if letter_count > 0 and (non_latin_count / letter_count) > 0.3:
+        if non_latin_count == 0:
+            cleaned.append(line)
+            continue
+
+        if letter_count == 0:
+            cleaned.append(line)
+            continue
+
+        ratio = non_latin_count / letter_count
+
+        # Linha majoritariamente non-latin: remover inteira
+        if ratio > 0.3:
             logger.debug("Removida linha com glyphs corrompidos: %s...", stripped[:40])
             continue
 
-        cleaned.append(line)
+        # Linha mista: remover apenas os chars non-latin inline
+        clean_line = []
+        for ch in line:
+            if ord(ch) > 0x024F and unicodedata.category(ch).startswith("L"):
+                continue  # Pular glyph non-latin
+            clean_line.append(ch)
+        result_line = "".join(clean_line)
+        # Limpar espaços duplos gerados pela remoção
+        result_line = re.sub(r"  +", " ", result_line)
+        cleaned.append(result_line)
 
     return "\n".join(cleaned)
