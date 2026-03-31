@@ -10,6 +10,9 @@ from core.cleaning import (
     fix_hyphenation,
     normalize_paragraphs,
     normalize_whitespace,
+    rejoin_broken_paragraphs,
+    remove_corrupted_glyphs,
+    remove_ereader_boilerplate,
     remove_ocr_noise,
     remove_repeated_headers_footers,
 )
@@ -92,10 +95,110 @@ class TestNormalizeParagraphs:
         result = normalize_paragraphs(text)
         assert "# Título" in result
 
-    def test_joins_broken_paragraph(self):
-        text = "Esta é uma linha que não termina com pontuação\ne continua aqui na próxima linha."
-        result = normalize_paragraphs(text)
-        assert "pontuação e continua" in result
+
+class TestRejoinBrokenParagraphs:
+    def test_joins_broken_lines(self):
+        """Linhas curtas sem pontuação final devem ser unidas."""
+        text = "Despesas indispensáveis\nà administração da falência."
+        result = rejoin_broken_paragraphs(text)
+        assert "indispensáveis à administração" in result
+
+    def test_joins_multiline_paragraph(self):
+        text = "O direito empresarial\nregula as atividades\neconômicas organizadas."
+        result = rejoin_broken_paragraphs(text)
+        assert "empresarial regula as atividades econômicas" in result
+
+    def test_preserves_headings(self):
+        text = "# Título\nTexto do parágrafo."
+        result = rejoin_broken_paragraphs(text)
+        assert "# Título" in result
+        assert "# Título Texto" not in result
+
+    def test_preserves_blank_line_separation(self):
+        text = "Parágrafo um completo.\n\nParágrafo dois completo."
+        result = rejoin_broken_paragraphs(text)
+        assert "Parágrafo um completo." in result
+        assert "Parágrafo dois completo." in result
+        assert "completo. Parágrafo" not in result
+
+    def test_preserves_uppercase_lines(self):
+        text = "DOS FATOS\nO autor alega que sofreu danos."
+        result = rejoin_broken_paragraphs(text)
+        assert "DOS FATOS" in result
+        assert "DOS FATOS O autor" not in result
+
+    def test_preserves_enumeration(self):
+        text = "a) primeiro item do pedido\nb) segundo item do pedido"
+        result = rejoin_broken_paragraphs(text)
+        assert "a) primeiro" in result
+        assert "b) segundo" in result
+        assert "pedido b)" not in result
+
+    def test_sentence_ending_breaks_paragraph(self):
+        text = "Primeira sentença completa.\nSegunda sentença aqui."
+        result = rejoin_broken_paragraphs(text)
+        assert "completa.\nSegunda" in result or "completa." in result
+
+
+class TestRemoveEreaderBoilerplate:
+    def test_removes_ereader_instructions(self):
+        text = (
+            "Como usar seu e-reader\n"
+            "Toque para escolher fonte e tamanho\n"
+            "Alterar layout e luminosidade do display\n"
+            "Fazer buscas no texto do livro\n"
+            "Anotar trechos e fazer marcações\n"
+            "Acesso a outras opções do menu lateral\n"
+            "\n"
+            "CAPÍTULO I - Introdução ao Direito Empresarial\n"
+            "\n"
+            "O direito empresarial é o ramo do direito privado."
+        )
+        result = remove_ereader_boilerplate(text)
+        assert "escolher fonte" not in result
+        assert "luminosidade" not in result
+        assert "CAPÍTULO I" in result
+        assert "direito empresarial" in result
+
+    def test_preserves_normal_text(self):
+        text = "O direito empresarial regula as atividades econômicas.\n\nA empresa é a atividade."
+        assert remove_ereader_boilerplate(text) == text
+
+    def test_short_document_unchanged(self):
+        text = "Texto curto."
+        assert remove_ereader_boilerplate(text) == text
+
+
+class TestRemoveCorruptedGlyphs:
+    def test_removes_sinhala_glyphs(self):
+        text = "Texto normal\nSමිමිකුකාටමාම\nMais texto normal."
+        result = remove_corrupted_glyphs(text)
+        assert "Texto normal" in result
+        assert "Mais texto" in result
+        assert "මිමි" not in result
+
+    def test_removes_cjk_glyphs(self):
+        text = "Parágrafo válido.\n你好世界这是测试文本\nOutro parágrafo."
+        result = remove_corrupted_glyphs(text)
+        assert "Parágrafo válido" in result
+        assert "Outro parágrafo" in result
+        assert "你好" not in result
+
+    def test_preserves_portuguese_accents(self):
+        text = "Ação, ção, função, instituição, é, ê, à, ã, õ, ú"
+        result = remove_corrupted_glyphs(text)
+        assert result.strip() == text
+
+    def test_preserves_mixed_content_low_ratio(self):
+        """Linha com poucos chars não-latinos é preservada."""
+        text = "Artigo 5° da CF/88"
+        result = remove_corrupted_glyphs(text)
+        assert "Artigo 5" in result
+
+    def test_preserves_empty_lines(self):
+        text = "Texto\n\n\nMais texto"
+        result = remove_corrupted_glyphs(text)
+        assert result == text
 
 
 class TestCleanText:

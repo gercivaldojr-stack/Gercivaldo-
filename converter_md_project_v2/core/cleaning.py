@@ -1,13 +1,34 @@
 """
 Módulo de limpeza e normalização de texto extraído.
-Remove artefatos de OCR, hifenização, cabeçalhos/rodapés repetidos, ruído.
+Remove artefatos de OCR, hifenização, cabeçalhos/rodapés repetidos, ruído,
+boilerplate de e-reader e glyphs corrompidos.
 """
 
 import logging
 import re
+import unicodedata
 from collections import Counter
 
 logger = logging.getLogger(__name__)
+
+# Palavras-chave de instruções de e-reader/epub a remover no início do documento
+EREADER_KEYWORDS = [
+    "escolher fonte", "alterar layout", "luminosidade",
+    "fazer buscas", "anotar trechos", "menu",
+    "marca-texto", "marcador", "bookmark",
+    "aumentar fonte", "diminuir fonte", "tamanho da fonte",
+    "modo noturno", "modo de leitura",
+    "configurações de leitura", "opções de visualização",
+    "deslize para", "toque para", "toque na tela",
+    "arraste", "pinça para zoom",
+    "sumário interativo", "índice interativo",
+    "navegação", "barra de progresso",
+    "epub", "e-reader", "e-book", "ebook",
+    "kindle", "kobo", "google play livros", "apple books",
+    "this ebook", "digital rights", "drm",
+    "choose font", "adjust layout", "brightness",
+    "search text", "annotate", "highlight",
+]
 
 
 def clean_text(text: str, remove_headers_footers: bool = True) -> str:
@@ -25,11 +46,14 @@ def clean_text(text: str, remove_headers_footers: bool = True) -> str:
 
     text = fix_hyphenation(text)
     text = normalize_whitespace(text)
+    text = remove_corrupted_glyphs(text)
     text = remove_ocr_noise(text)
+    text = remove_ereader_boilerplate(text)
 
     if remove_headers_footers:
         text = remove_repeated_headers_footers(text)
 
+    text = rejoin_broken_paragraphs(text)
     text = normalize_paragraphs(text)
 
     return text.strip()
@@ -133,40 +157,215 @@ def remove_repeated_headers_footers(text: str) -> str:
 def normalize_paragraphs(text: str) -> str:
     """Normaliza separação de parágrafos.
 
-    - Remove quebras de linha excessivas (> 2 em sequência)
-    - Junta linhas que pertencem ao mesmo parágrafo (linhas curtas seguidas de texto)
+    Remove quebras de linha excessivas (> 2 em sequência).
+    A junção de linhas quebradas é feita por rejoin_broken_paragraphs.
     """
-    # Remover mais de 2 quebras de linha consecutivas
     text = re.sub(r"\n{4,}", "\n\n\n", text)
+    return text
 
+
+def _is_block_boundary(line: str) -> bool:
+    """Verifica se a linha é um delimitador de bloco que não deve ser unido."""
+    s = line.strip()
+    if not s:
+        return True
+    if s.startswith(("#", "-", "*", ">", "---", "```")):
+        return True
+    # Linhas toda em maiúsculas curtas são provavelmente headings ainda não processados
+    if s.isupper() and len(s) < 100:
+        return True
+    return False
+
+
+def _ends_sentence(line: str) -> bool:
+    """Verifica se a linha termina com pontuação de fim de sentença."""
+    s = line.rstrip()
+    if not s:
+        return True
+    return s[-1] in ".!?;:" or s.endswith('"""') or s.endswith(")")
+
+
+def rejoin_broken_paragraphs(text: str) -> str:
+    """Junta linhas quebradas por extração de PDF em parágrafos contínuos.
+
+    Heurística: uma linha que NÃO termina com pontuação final e é seguida
+    por outra linha de texto (sem linha em branco entre elas) faz parte do
+    mesmo parágrafo. A junção é feita com espaço.
+
+    Linhas protegidas (nunca unidas):
+    - Headings markdown (#)
+    - Linhas em branco
+    - Listas (-, *, >)
+    - Linhas todas em maiúsculas (prováveis headings jurídicos)
+    - Linhas que começam com enumeração (a), b), 1., Art.)
+    """
     lines = text.split("\n")
     result = []
-    i = 0
+    buffer = ""
 
-    while i < len(lines):
-        line = lines[i]
+    for line in lines:
+        stripped = line.strip()
 
-        # Se a linha é um heading markdown, preservar
-        if line.strip().startswith("#"):
+        # Se é um delimitador, flush o buffer e preservar
+        if _is_block_boundary(stripped):
+            if buffer:
+                result.append(buffer)
+                buffer = ""
             result.append(line)
-            i += 1
             continue
 
-        # Se a linha termina sem pontuação final e a próxima começa com minúscula,
-        # provavelmente é continuação do mesmo parágrafo
-        if (
-            i + 1 < len(lines)
-            and line.strip()
-            and not line.strip().endswith((".", ":", ";", "!", "?", '"""'))
-            and lines[i + 1].strip()
-            and lines[i + 1].strip()[0].islower()
-            and not lines[i + 1].strip().startswith(("#", "-", "*", ">"))
-        ):
-            result.append(line.strip() + " " + lines[i + 1].strip())
-            i += 2
+        # Se a linha atual começa com padrão de enumeração, flush e iniciar novo
+        if re.match(r"^([a-z]\)|[a-z]\.|[ivxlc]+\)|[IVXLC]+\)|\d+\)|\d+\.)\s+", stripped):
+            if buffer:
+                result.append(buffer)
+                buffer = ""
+            buffer = stripped
             continue
 
-        result.append(line)
-        i += 1
+        # Se o buffer está vazio, começar acumulando
+        if not buffer:
+            buffer = stripped
+            continue
+
+        # Se o buffer não termina com pontuação final, unir
+        if not _ends_sentence(buffer):
+            buffer = buffer + " " + stripped
+        else:
+            # Buffer termina com pontuação — é parágrafo completo
+            result.append(buffer)
+            buffer = stripped
+
+    if buffer:
+        result.append(buffer)
 
     return "\n".join(result)
+
+
+def remove_ereader_boilerplate(text: str) -> str:
+    """Remove blocos de instruções de e-reader/epub do início do documento.
+
+    Analisa as primeiras ~60 linhas do documento. Se encontrar uma
+    concentração de palavras-chave típicas de instruções de leitor
+    digital, remove o bloco inteiro até encontrar conteúdo real.
+    """
+    lines = text.split("\n")
+    if len(lines) < 5:
+        return text
+
+    # Analisar apenas o início do documento (primeiras 80 linhas)
+    scan_limit = min(80, len(lines))
+    cut_point = 0
+    keyword_window = 0
+    last_keyword_line = -1
+
+    for i in range(scan_limit):
+        lower = lines[i].strip().lower()
+        if not lower:
+            continue
+
+        has_keyword = any(kw in lower for kw in EREADER_KEYWORDS)
+        if has_keyword:
+            keyword_window += 1
+            last_keyword_line = i
+
+    # Se encontramos 3+ linhas com keywords no início, remover até a última
+    if keyword_window >= 3 and last_keyword_line > 0:
+        # Avançar até a próxima linha em branco depois do bloco de boilerplate
+        cut_point = last_keyword_line + 1
+        while cut_point < len(lines) and lines[cut_point].strip():
+            # Se a linha seguinte não tem keyword e parece conteúdo real, parar
+            lower = lines[cut_point].strip().lower()
+            if not any(kw in lower for kw in EREADER_KEYWORDS) and len(lines[cut_point].strip()) > 40:
+                break
+            cut_point += 1
+
+        logger.info(
+            "Removidas %d linhas de boilerplate de e-reader no início do documento",
+            cut_point,
+        )
+        return "\n".join(lines[cut_point:])
+
+    return text
+
+
+def _latin_ratio(text: str) -> float:
+    """Calcula a proporção de caracteres latinos + espaço em uma string."""
+    if not text:
+        return 1.0
+    latin_count = 0
+    total = 0
+    for ch in text:
+        if ch.isspace():
+            continue
+        total += 1
+        cat = unicodedata.category(ch)
+        # Letras latinas (L*), números (N*), pontuação (P*), símbolos comuns (S*)
+        if cat.startswith("L"):
+            # Verificar se é script latino ou comum
+            try:
+                script = unicodedata.name(ch, "")
+                if any(w in script for w in ("LATIN", "DIGIT", "SPACE", "FULL STOP",
+                                              "COMMA", "SEMICOLON", "COLON",
+                                              "QUOTATION", "APOSTROPHE", "HYPHEN")):
+                    latin_count += 1
+                elif ord(ch) < 0x024F:  # Bloco Latin Extended
+                    latin_count += 1
+                else:
+                    pass  # Não-latino
+            except ValueError:
+                pass
+        elif cat.startswith(("N", "P", "S", "Z")):
+            latin_count += 1
+    return latin_count / total if total > 0 else 1.0
+
+
+def remove_corrupted_glyphs(text: str) -> str:
+    """Remove linhas compostas majoritariamente por caracteres não-latinos.
+
+    Detecta linhas com glyphs de scripts estrangeiros (Sinhala, CJK, Arabic, etc.)
+    que são resíduos de fontes especiais ou imagens no PDF.
+    Preserva acentuação portuguesa (À-ÿ) e caracteres latinos normais.
+    """
+    lines = text.split("\n")
+    cleaned = []
+
+    for line in lines:
+        stripped = line.strip()
+
+        # Linhas vazias ou curtas: preservar
+        if len(stripped) < 3:
+            cleaned.append(line)
+            continue
+
+        # Verificação rápida: se contém caracteres fora do range latino básico+estendido
+        has_non_latin = False
+        for ch in stripped:
+            cp = ord(ch)
+            # Fora do range ASCII + Latin Extended + Latin Extended Additional
+            # e não é espaço/pontuação/dígito
+            if cp > 0x024F and not ch.isspace() and not ch.isdigit() and unicodedata.category(ch).startswith("L"):
+                has_non_latin = True
+                break
+
+        if not has_non_latin:
+            cleaned.append(line)
+            continue
+
+        # Contar chars não-latinos na linha
+        non_latin_count = 0
+        letter_count = 0
+        for ch in stripped:
+            if not ch.isspace() and unicodedata.category(ch).startswith("L"):
+                letter_count += 1
+                cp = ord(ch)
+                if cp > 0x024F:
+                    non_latin_count += 1
+
+        # Se > 30% das letras são não-latinas, remover a linha
+        if letter_count > 0 and (non_latin_count / letter_count) > 0.3:
+            logger.debug("Removida linha com glyphs corrompidos: %s...", stripped[:40])
+            continue
+
+        cleaned.append(line)
+
+    return "\n".join(cleaned)
