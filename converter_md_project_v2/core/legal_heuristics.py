@@ -158,10 +158,13 @@ def generate_toc(text: str) -> str:
         return ""
 
     # Gerar slug para link âncora (compatível com GitHub/Streamlit Markdown)
-    def _slugify(title: str) -> str:
+    def _slugify(title: str, max_len: int = 60) -> str:
         slug = title.lower()
         slug = re.sub(r"[^\w\s-]", "", slug)
         slug = re.sub(r"[\s]+", "-", slug.strip())
+        # Truncar slugs longos na última palavra inteira
+        if len(slug) > max_len:
+            slug = slug[:max_len].rsplit("-", 1)[0]
         return slug
 
     toc_lines = ["## Sumário", ""]

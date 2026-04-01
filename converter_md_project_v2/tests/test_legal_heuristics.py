@@ -426,8 +426,34 @@ class TestGenerateToc:
         toc = generate_toc(text)
         assert "(#dos-fatos-relevantes)" in toc
 
+    def test_toc_slug_truncation(self):
+        """Slugs longos devem ser truncados para manter âncoras razoáveis."""
+        long_title = "Do constrangimento ilegal por excesso de prazo na formação da culpa e demora injustificada no julgamento"
+        text = f"# Título\n\n## {long_title}\n\nTexto."
+        toc = generate_toc(text)
+        # O slug deve estar truncado (< 65 chars)
+        for line in toc.split("\n"):
+            if "(#" in line:
+                slug = line.split("(#")[1].rstrip(")")
+                assert len(slug) <= 60
+
     def test_toc_integrated_in_pipeline(self):
-        """TOC deve aparecer no resultado final do pipeline."""
+        """TOC deve aparecer no resultado final do pipeline quando habilitado."""
+        from core.pipeline import convert_document
+
+        content = "DOS FATOS\n\nTexto dos fatos.\n\nDOS PEDIDOS\n\nTexto dos pedidos."
+        result = convert_document(
+            file_bytes=content.encode("utf-8"),
+            filename="peticao.txt",
+            mode="forense",
+            generate_toc_flag=True,
+        )
+        assert result.success
+        assert "## Sumário" in result.markdown
+        assert "DOS FATOS" in result.markdown
+
+    def test_toc_not_generated_by_default(self):
+        """TOC NÃO deve aparecer por padrão (generate_toc_flag=False)."""
         from core.pipeline import convert_document
 
         content = "DOS FATOS\n\nTexto dos fatos.\n\nDOS PEDIDOS\n\nTexto dos pedidos."
@@ -437,7 +463,7 @@ class TestGenerateToc:
             mode="forense",
         )
         assert result.success
-        assert "## Sumário" in result.markdown
+        assert "## Sumário" not in result.markdown
         assert "DOS FATOS" in result.markdown
 
 

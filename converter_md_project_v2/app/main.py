@@ -146,6 +146,12 @@ with st.sidebar:
              "'Nota de adequacao' e envolve em blockquote.",
     )
 
+    generate_toc_opt = st.checkbox(
+        "Gerar sumario automatico",
+        value=False,
+        help="Gera sumario (TOC) automatico com links para cada heading.",
+    )
+
     st.divider()
     st.caption("Formatos aceitos: PDF, DOCX, TXT, MD")
     st.caption("v4.1 | Python 3.10+ | PyMuPDF | python-docx")
@@ -185,6 +191,7 @@ if uploaded_files:
                 extract_procedural=extract_procedural and mode == "forense",
                 separate_enums=separate_enums and mode == "forense",
                 wrap_notes=wrap_notes and mode == "forense",
+                generate_toc_flag=generate_toc_opt,
             )
             results.append(result)
 

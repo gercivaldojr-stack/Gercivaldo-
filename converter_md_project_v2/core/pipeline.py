@@ -116,6 +116,7 @@ def convert_document(
     separate_enums: bool = False,
     wrap_notes: bool = False,
     preserve_inline_formatting: bool = True,
+    generate_toc_flag: bool = False,
 ) -> ConversionResult:
     """Converte um documento jurídico para Markdown estruturado.
 
@@ -187,10 +188,13 @@ def convert_document(
                 fm_lines = fm_lines[:-1] + extra_lines + [fm_lines[-1]]
                 frontmatter = "\n".join(fm_lines)
 
-        # 3c. Sumário automático (P6)
-        toc = generate_toc(structured)
-        if toc:
-            structured = frontmatter + "\n\n" + toc + "\n" + structured
+        # 3c. Sumário automático (apenas se habilitado)
+        if generate_toc_flag:
+            toc = generate_toc(structured)
+            if toc:
+                structured = frontmatter + "\n\n" + toc + "\n" + structured
+            else:
+                structured = frontmatter + "\n\n" + structured
         else:
             structured = frontmatter + "\n\n" + structured
 
@@ -231,6 +235,7 @@ def convert_batch(
     separate_enums: bool = False,
     wrap_notes: bool = False,
     preserve_inline_formatting: bool = True,
+    generate_toc_flag: bool = False,
 ) -> list[ConversionResult]:
     """Converte múltiplos documentos em lote.
 
@@ -265,6 +270,7 @@ def convert_batch(
             separate_enums=separate_enums,
             wrap_notes=wrap_notes,
             preserve_inline_formatting=preserve_inline_formatting,
+            generate_toc_flag=generate_toc_flag,
         )
         results.append(result)
 
