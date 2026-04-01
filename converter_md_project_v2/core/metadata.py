@@ -39,11 +39,26 @@ def generate_frontmatter(
     meta: dict[str, str] = {}
 
     # Título: primeira linha não-vazia que pareça heading ou ementa
+    # Pular linhas de frontmatter YAML e delimitadores ---
+    _yaml_keys = re.compile(
+        r"^(?:titulo|data|status|convertido_em|proad|orgao_emissor|tipo_peca"
+        r"|paciente|autor|reu|impetrante|autoridade_coatora|pedido_liminar"
+        r"|processo_origem|comarca|acoes_cumuladas)\s*:", re.IGNORECASE
+    )
     for line in text.splitlines():
         stripped = line.strip().lstrip("#").strip()
-        if stripped and len(stripped) > 5:
-            meta["titulo"] = stripped[:120]
-            break
+        if not stripped or len(stripped) <= 5:
+            continue
+        # Pular delimitadores de frontmatter
+        if stripped == "---":
+            continue
+        # Pular linhas que parecem YAML (chave: "valor")
+        if _yaml_keys.match(stripped):
+            continue
+        if re.match(r"^\w+:\s+[\"']", stripped):
+            continue
+        meta["titulo"] = stripped[:120]
+        break
     if "titulo" not in meta:
         meta["titulo"] = filename.rsplit(".", 1)[0] if filename else "Documento sem título"
 
@@ -196,14 +211,21 @@ def extract_procedural_metadata(text: str, meta: dict) -> None:
     if reu_match:
         meta["reu"] = reu_match.group(1).strip()[:120]
 
-    # Comarca
+    # Comarca — capturar apenas até newline, heading (#) ou texto em minúsculas longo
     comarca_match = re.search(
-        r"(?:Comarca|Foro|Vara)\s+(?:de\s+|da\s+|do\s+)?(.+?)(?:\n|$)",
+        r"(?:Comarca|Foro|Vara)\s+(?:de\s+|da\s+|do\s+)?"
+        r"([A-ZÀ-Ú][^\n#]{2,60}?)(?:\s*[-–—]\s*[A-ZÀ-Ú]{2})?(?:\n|#|$)",
         search_area,
         re.IGNORECASE,
     )
     if comarca_match:
-        meta["comarca"] = comarca_match.group(1).strip()[:80]
+        comarca_val = comarca_match.group(1).strip()
+        # Limpar slug-style text (palavras-com-hífen) que indicam lixo de heading
+        comarca_val = re.split(r"[a-záéíóú]+-[a-záéíóú]+-", comarca_val)[0].strip()
+        # Remover trailing pontuação ou caracteres indesejados
+        comarca_val = re.sub(r"[\[\]()]+$", "", comarca_val).strip()
+        if comarca_val and len(comarca_val) > 2:
+            meta["comarca"] = comarca_val[:80]
 
     # Pedido liminar (booleano explícito)
     has_liminar = bool(re.search(

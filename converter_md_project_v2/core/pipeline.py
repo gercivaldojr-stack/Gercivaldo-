@@ -15,6 +15,49 @@ from .piece_separator import format_separated_pieces, separate_pieces
 logger = logging.getLogger(__name__)
 
 
+def _strip_existing_frontmatter(text: str) -> str:
+    """Remove frontmatter YAML e sumário embutido que vieram do arquivo original.
+
+    Remove:
+    - Blocos entre --- no início do texto
+    - Blocos ## Sumário / ## Índice seguidos de listas - [...] até linha em branco dupla
+    """
+    import re
+    lines = text.split("\n")
+    result = []
+    i = 0
+
+    # Pular frontmatter YAML no início
+    if lines and lines[0].strip() == "---":
+        i = 1
+        while i < len(lines):
+            if lines[i].strip() == "---":
+                i += 1
+                break
+            i += 1
+
+    # Processar resto do texto
+    while i < len(lines):
+        stripped = lines[i].strip()
+        # Detectar sumário embutido do arquivo original
+        if re.match(r"^#{1,3}\s+(?:Sumário|Índice|SUMÁRIO|ÍNDICE)\s*$", stripped):
+            i += 1
+            # Pular linhas do sumário (listas com - [...] e linhas em branco)
+            while i < len(lines):
+                s = lines[i].strip()
+                if s.startswith("- [") or s.startswith("  - [") or s.startswith("    - [") or not s:
+                    i += 1
+                    if not s:
+                        break
+                else:
+                    break
+            continue
+        result.append(lines[i])
+        i += 1
+
+    return "\n".join(result)
+
+
 @dataclass
 class ConversionResult:
     """Resultado da conversão de um documento."""
@@ -105,6 +148,8 @@ def convert_document(
                 frontmatter = "\n".join(fm_lines)
 
         # 3c. Sumário automático (P6)
+        # Remover frontmatter/sumário residual do texto original antes de gerar TOC
+        structured = _strip_existing_frontmatter(structured)
         toc = generate_toc(structured)
         if toc:
             structured = frontmatter + "\n\n" + toc + "\n" + structured

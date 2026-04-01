@@ -136,6 +136,12 @@ def generate_toc(text: str) -> str:
     Returns:
         Bloco Markdown do sumário, ou string vazia se < 2 headings.
     """
+    # Se o texto já contém um sumário, não gerar outro
+    for line in text.split("\n"):
+        s = line.strip()
+        if re.match(r"^#{1,3}\s+(?:Sumário|Índice|SUMÁRIO|ÍNDICE)\s*$", s):
+            return ""
+
     headings = []
     for line in text.split("\n"):
         stripped = line.strip()
@@ -143,6 +149,9 @@ def generate_toc(text: str) -> str:
         if match:
             level = len(match.group(1))
             title = match.group(2).strip()
+            # Não incluir o próprio sumário existente nos headings
+            if title.lower() in ("sumário", "índice"):
+                continue
             headings.append((level, title))
 
     if len(headings) < 2:
