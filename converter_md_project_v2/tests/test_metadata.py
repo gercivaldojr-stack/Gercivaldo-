@@ -142,3 +142,61 @@ class TestGenerateFrontmatter:
         text = "Título simples\n\nConteúdo sem menção a órgão."
         result = generate_frontmatter(text)
         assert 'orgao_emissor:' not in result
+
+
+class TestExtractPieceMetadata:
+    """P8: Metadados expandidos da peça jurídica."""
+
+    def test_tipo_peca_habeas_corpus(self):
+        text = "HABEAS CORPUS\n\nTexto da peça."
+        result = generate_frontmatter(text, extract_metadata=True)
+        assert 'tipo_peca: "Habeas Corpus"' in result
+
+    def test_tipo_peca_peticao(self):
+        text = "PETIÇÃO INICIAL\n\nTexto da petição."
+        result = generate_frontmatter(text, extract_metadata=True)
+        assert "Petição Inicial" in result
+
+    def test_tipo_peca_sentenca(self):
+        text = "SENTENÇA\n\nTexto da sentença."
+        result = generate_frontmatter(text, extract_metadata=True)
+        assert "Sentença" in result
+
+    def test_extracts_paciente(self):
+        text = "HABEAS CORPUS\nPaciente: José Leonardo Ferreira Borges\nTexto."
+        result = generate_frontmatter(text, extract_metadata=True)
+        assert 'paciente: "José Leonardo Ferreira Borges"' in result
+
+    def test_extracts_autoridade_coatora(self):
+        text = "HABEAS CORPUS\nAutoridade coatora: MM. Juíza de Direito da 1.ª Vara\nTexto."
+        result = generate_frontmatter(text, extract_metadata=True)
+        assert "autoridade_coatora:" in result
+        assert "Juíza de Direito" in result
+
+    def test_extracts_processo_origem(self):
+        text = "Processo de origem n.º 5550842-80.2025.8.09.0051\nTexto."
+        result = generate_frontmatter(text, extract_metadata=True)
+        assert "processo_origem:" in result
+        assert "5550842" in result
+
+    def test_extracts_pedido_liminar(self):
+        text = "HABEAS CORPUS\nContém pedido liminar.\nTexto."
+        result = generate_frontmatter(text, extract_metadata=True)
+        assert 'pedido_liminar: "true"' in result
+
+    def test_no_metadata_when_disabled(self):
+        text = "HABEAS CORPUS\nPaciente: José\nTexto."
+        result = generate_frontmatter(text, extract_metadata=False)
+        assert "paciente:" not in result
+        assert "tipo_peca:" not in result
+
+    def test_normal_text_no_tipo(self):
+        text = "Texto normal sem tipo de peça identificável."
+        result = generate_frontmatter(text, extract_metadata=True)
+        assert "tipo_peca:" not in result
+
+    def test_extracts_impetrante(self):
+        text = "Impetrante: DAVI MENDANHA LORERO\nTexto."
+        result = generate_frontmatter(text, extract_metadata=True)
+        assert "impetrante:" in result
+        assert "DAVI MENDANHA" in result

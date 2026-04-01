@@ -53,11 +53,61 @@ def clean_text(text: str, remove_headers_footers: bool = True) -> str:
     if remove_headers_footers:
         text = remove_repeated_headers_footers(text)
 
+    text = remove_residual_pagination(text)
+    text = reconnect_cnj_numbers(text)
     text = rejoin_broken_paragraphs(text)
+    text = separate_enumerations(text)
     text = normalize_legal_citations(text)
     text = normalize_paragraphs(text)
 
     return text.strip()
+
+
+def reconnect_cnj_numbers(text: str) -> str:
+    """Reconecta números CNJ e siglas de processos partidos por quebra de linha.
+
+    Siglas reconhecidas: HC, RHC, REsp, AgRg, ARE, AREsp, ADI, ADPF, RE, RMS.
+    Padrão: SIGLA\\n1234567-89.2024 → SIGLA 1234567-89.2024 (em uma linha).
+    """
+    # Sigla seguida de quebra de linha e número CNJ
+    text = re.sub(
+        r"\b(HC|RHC|REsp|AgRg|ARE|AREsp|ADI|ADPF|RE|RMS)\s*\n\s*(\d{7}-\d{2}\.\d{4})",
+        r"\1 \2",
+        text,
+    )
+    return text
+
+
+def remove_residual_pagination(text: str) -> str:
+    """Remove paginação residual do texto.
+
+    Remove padrões de paginação:
+    - "Página NN", "Pág. NN", "— NN —"
+    - Números isolados (^\\d+$) somente nas primeiras/últimas 3 linhas.
+    """
+    lines = text.split("\n")
+    cleaned = []
+
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+
+        # Remover "Página NN" e "Pág. NN" em qualquer posição
+        if re.match(r"^P[áa]gina\s+\d+\s*$", stripped, re.IGNORECASE):
+            continue
+        if re.match(r"^P[áa]g\.\s*\d+\s*$", stripped, re.IGNORECASE):
+            continue
+        # Remover "— NN —" (paginação decorativa)
+        if re.match(r"^[-–—]\s*\d+\s*[-–—]\s*$", stripped):
+            continue
+
+        # Números isolados somente nas primeiras/últimas 3 linhas
+        if re.match(r"^\d+$", stripped):
+            if i < 3 or i >= len(lines) - 3:
+                continue
+
+        cleaned.append(line)
+
+    return "\n".join(cleaned)
 
 
 def fix_hyphenation(text: str) -> str:
@@ -99,11 +149,21 @@ def remove_ocr_noise(text: str) -> str:
     return text
 
 
-def remove_repeated_headers_footers(text: str) -> str:
+def remove_repeated_headers_footers(
+    text: str,
+    preserve_first: bool = True,
+) -> str:
     """Detecta e remove cabeçalhos e rodapés repetidos entre páginas.
 
     Heurística: linhas curtas que aparecem 3+ vezes com mesmo conteúdo
     são provavelmente cabeçalhos/rodapés.
+
+    P10: Se preserve_first=True, preserva a primeira ocorrência de cada
+    padrão repetido (pode ser conteúdo substantivo na página 1).
+
+    Args:
+        text: Texto com possíveis headers/footers repetidos.
+        preserve_first: Se True, mantém a primeira ocorrência de cada padrão.
     """
     lines = text.split("\n")
     if len(lines) < 20:
@@ -145,14 +205,50 @@ def remove_repeated_headers_footers(text: str) -> str:
 
     logger.info("Detectados %d padrões de cabeçalho/rodapé repetidos", len(filtered_repeated))
 
+    # P10: Rastrear primeira ocorrência de cada padrão
+    first_seen: set[str] = set()
     cleaned_lines = []
     for line in lines:
         stripped = line.strip()
         normalized = re.sub(r"\d+", "#", stripped.lower())
-        if normalized not in filtered_repeated:
+        if normalized in filtered_repeated:
+            if preserve_first and normalized not in first_seen:
+                # Preservar primeira ocorrência
+                first_seen.add(normalized)
+                cleaned_lines.append(line)
+                logger.debug("Preservada primeira ocorrência: %s", stripped[:50])
+            else:
+                # Remover repetições
+                continue
+        else:
             cleaned_lines.append(line)
 
     return "\n".join(cleaned_lines)
+
+
+def separate_enumerations(text: str) -> str:
+    """Garante que alíneas jurídicas (a), b), I —, etc.) sejam parágrafos separados (P9).
+
+    Insere linha em branco antes de cada alínea quando ela está colada
+    ao item anterior (sem linha em branco).
+    """
+    lines = text.split("\n")
+    result = []
+
+    enum_re = re.compile(
+        r"^([a-z]\)|[IVXLC]+\s*[-–—]\s|[ivxlc]+\)\s|\d+\.\d+\.?\s)"
+    )
+
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        # Se é alínea e a linha anterior não é vazia, inserir linha em branco
+        if enum_re.match(stripped) and i > 0:
+            prev = lines[i - 1].strip()
+            if prev:  # Linha anterior não é vazia
+                result.append("")
+        result.append(line)
+
+    return "\n".join(result)
 
 
 def normalize_paragraphs(text: str) -> str:
@@ -188,6 +284,38 @@ def _is_block_boundary(line: str) -> bool:
     return False
 
 
+def _is_next_line_protected(line: str) -> bool:
+    """Verifica se a linha seguinte é protegida e NÃO deve ser unida à anterior.
+
+    Protege: headings (#), listas (-, *, >), tabelas (|),
+    alíneas jurídicas (a), b), I —, 1.), separadores.
+    """
+    s = line.strip()
+    if not s:
+        return True
+    if s.startswith(("#", "- ", "* ", "> ", "|", "```")):
+        return True
+    if s == "---" or s == "***":
+        return True
+    # Alíneas e enumerações jurídicas
+    if re.match(
+        r"^([a-z]\)|[a-z]\.|[ivxlc]+\)|[IVXLC]+\)|\d+\)|\d+\.|[IVXLC]+\s*[-–—]\s+|§\s*\d+)\s*",
+        s,
+    ):
+        return True
+    # Linhas em maiúsculas (prováveis headings)
+    if s.isupper() and len(s) < 100:
+        return True
+    return False
+
+
+# Preposições / conjunções que indicam continuação obrigatória
+_TRAILING_PREPOSITIONS = re.compile(
+    r"\b(?:de|da|do|das|dos|na|no|nas|nos|em|com|que|e|ou|para|por|ao|à|aos|às)\s*$",
+    re.IGNORECASE,
+)
+
+
 def _ends_sentence(line: str) -> bool:
     """Verifica se a linha termina com pontuação de fim de sentença."""
     s = line.rstrip()
@@ -197,25 +325,34 @@ def _ends_sentence(line: str) -> bool:
     return s[-1] in ".!?;"
 
 
+def _ends_with_preposition(line: str) -> bool:
+    """Verifica se a linha termina com preposição/conjunção (continuação obrigatória)."""
+    return bool(_TRAILING_PREPOSITIONS.search(line.rstrip()))
+
+
 def rejoin_broken_paragraphs(text: str) -> str:
     """Junta linhas quebradas por extração de PDF em parágrafos contínuos.
 
-    Heurística: uma linha que NÃO termina com pontuação final e é seguida
-    por outra linha de texto (sem linha em branco entre elas) faz parte do
-    mesmo parágrafo. A junção é feita com espaço.
+    Heurística:
+    - Linha que NÃO termina em .!?:; e próxima NÃO é protegida → juntar.
+    - Linha que termina com preposição (de/da/do/na/em/com/que/e/ou/para/por/ao/à)
+      → SEMPRE juntar, independente de pontuação.
+    - Protege linhas de tabela Markdown (|), headings (#), listas (-, *, >),
+      alíneas jurídicas (a), b), I —, 1.).
 
     Linhas protegidas (nunca unidas):
     - Headings markdown (#)
     - Linhas em branco
-    - Listas explícitas (*, >) — travessão (-) NÃO é protegido (comum em texto jurídico)
+    - Listas explícitas (*, >, -)
+    - Tabelas markdown (|)
     - Linhas todas em maiúsculas (prováveis headings jurídicos)
-    - Linhas que começam com enumeração (a), b), 1., Art.)
+    - Linhas que começam com enumeração (a), b), 1., I —, Art.)
     """
     lines = text.split("\n")
     result = []
     buffer = ""
 
-    for line in lines:
+    for i, line in enumerate(lines):
         stripped = line.strip()
 
         # Se é um delimitador, flush o buffer e preservar
@@ -239,8 +376,13 @@ def rejoin_broken_paragraphs(text: str) -> str:
             buffer = stripped
             continue
 
-        # Se o buffer não termina com pontuação final, unir
-        if not _ends_sentence(buffer):
+        # Se o buffer termina com preposição → SEMPRE juntar
+        if _ends_with_preposition(buffer):
+            buffer = buffer + " " + stripped
+            continue
+
+        # Se o buffer não termina com pontuação final e próxima linha não é protegida → unir
+        if not _ends_sentence(buffer) and not _is_next_line_protected(stripped):
             buffer = buffer + " " + stripped
         else:
             # Buffer termina com pontuação — é parágrafo completo

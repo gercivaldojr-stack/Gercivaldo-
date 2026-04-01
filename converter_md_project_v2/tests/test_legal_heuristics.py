@@ -174,6 +174,140 @@ class TestDoutrinaMode:
         assert result.startswith("# ")
 
 
+class TestForenseEnumerationProtection:
+    """M3: Alíneas jurídicas NÃO viram headings ###."""
+
+    def test_alinea_a_not_heading(self):
+        text = "a) A concessão de tutela de urgência"
+        result = apply_legal_heuristics(text, mode="forense")
+        assert not result.strip().startswith("#")
+
+    def test_alinea_b_not_heading(self):
+        text = "b) Indenização por danos morais"
+        result = apply_legal_heuristics(text, mode="forense")
+        assert not result.strip().startswith("#")
+
+    def test_roman_dash_not_heading(self):
+        """I — texto NÃO deve virar heading."""
+        text = "I — os honorários advocatícios"
+        result = apply_legal_heuristics(text, mode="forense")
+        assert not result.strip().startswith("#")
+
+    def test_roman_ii_dash_not_heading(self):
+        text = "II — custas processuais"
+        result = apply_legal_heuristics(text, mode="forense")
+        assert not result.strip().startswith("#")
+
+    def test_subsection_1_1_not_heading_forense(self):
+        """1.1 texto NÃO deve virar heading no modo forense (é alínea)."""
+        text = "1.1 primeira subseção do pedido"
+        result = apply_legal_heuristics(text, mode="forense")
+        assert not result.strip().startswith("#")
+
+    def test_subsection_1_2_not_heading_forense(self):
+        text = "1.2 segunda subseção do pedido"
+        result = apply_legal_heuristics(text, mode="forense")
+        assert not result.strip().startswith("#")
+
+
+class TestForenseNumberedSections:
+    """M5: Seções numeradas no modo forense."""
+
+    def test_numbered_uppercase_section_is_h2(self):
+        """1. DOS FATOS → ## H2."""
+        text = "1. DOS FATOS"
+        result = apply_legal_heuristics(text, mode="forense")
+        assert result.strip().startswith("## ")
+
+    def test_numbered_uppercase_section_2(self):
+        text = "2. DO DIREITO"
+        result = apply_legal_heuristics(text, mode="forense")
+        assert result.strip().startswith("## ")
+
+    def test_numbered_uppercase_section_pedidos(self):
+        text = "3. DOS PEDIDOS"
+        result = apply_legal_heuristics(text, mode="forense")
+        assert result.strip().startswith("## ")
+
+    def test_numbered_lowercase_not_h2(self):
+        """1. texto minúsculo NÃO é seção numerada."""
+        text = "1. Introdução ao caso"
+        result = apply_legal_heuristics(text, mode="forense")
+        assert not result.strip().startswith("## ")
+
+    def test_excelentissimo_is_h2(self):
+        text = "EXCELENTÍSSIMO SENHOR DOUTOR JUIZ DE DIREITO"
+        result = apply_legal_heuristics(text, mode="forense")
+        assert result.strip().startswith("## ")
+        assert not result.strip().startswith("### ")
+
+    def test_no_h2_promoted_to_h1(self):
+        """H2 NÃO deve ser promovido a H1 mesmo sem H1 no documento."""
+        text = "DOS FATOS\n\nTexto.\n\nDOS PEDIDOS\n\nTexto."
+        result = apply_legal_heuristics(text, mode="forense")
+        lines = [l for l in result.split("\n") if l.strip().startswith("#")]
+        for line in lines:
+            assert line.strip().startswith("## ")
+            assert not line.strip().startswith("# ") or line.strip().startswith("## ")
+
+
+class TestJurisprudenceCitations:
+    """P7: Citações jurisprudenciais devem ser blockquote."""
+
+    def test_no_hc_citation(self):
+        text = (
+            "Texto argumentativo.\n\n"
+            "No HC 91.199/SP, Rel. Min. Cármen Lúcia, 1.ª Turma, j. 16/10/2007, "
+            "o STF assentou que o excesso de prazo deve ser avaliado.\n\n"
+            "Mais texto."
+        )
+        result = apply_legal_heuristics(text, mode="forense", detect_citations=True)
+        assert "> No HC 91.199/SP" in result
+        assert "Mais texto" in result
+        assert "> Mais texto" not in result
+
+    def test_no_agrg_citation(self):
+        text = (
+            "No AgRg no RHC 129.833/PB, Rel. Min. Laurita Vaz, 6.ª Turma, "
+            "o STJ reconheceu a mitigação da Súmula 52.\n\n"
+            "Texto normal."
+        )
+        result = apply_legal_heuristics(text, mode="forense", detect_citations=True)
+        assert "> No AgRg no RHC 129.833/PB" in result
+
+    def test_no_resp_citation(self):
+        text = "No REsp 1.234.567/SP, decidiu-se que..."
+        result = apply_legal_heuristics(text, mode="forense", detect_citations=True)
+        assert "> No REsp 1.234.567/SP" in result
+
+    def test_citation_disabled(self):
+        text = "No HC 91.199/SP, Rel. Min. Cármen Lúcia, decidiu-se."
+        result = apply_legal_heuristics(text, mode="forense", detect_citations=False)
+        assert "> No HC" not in result
+
+    def test_citation_only_in_forense(self):
+        text = "No HC 91.199/SP, o STF assentou sobre o excesso de prazo."
+        result = apply_legal_heuristics(text, mode="doutrina", detect_citations=True)
+        assert "> No HC" not in result
+
+    def test_normal_text_not_cited(self):
+        text = "O réu deve pagar indenização por danos morais."
+        result = apply_legal_heuristics(text, mode="forense", detect_citations=True)
+        assert "> " not in result
+
+    def test_multiline_citation(self):
+        text = (
+            "No HC 5043351-09.2023.8.09.0000, admitiu-se\n"
+            "a mitigação da Súmula em caso análogo.\n\n"
+            "Texto seguinte."
+        )
+        result = apply_legal_heuristics(text, mode="forense", detect_citations=True)
+        assert "> No HC 5043351" in result
+        assert "> a mitigação" in result
+        assert "Texto seguinte" in result
+        assert "> Texto seguinte" not in result
+
+
 class TestRemoveSumario:
     def test_removes_sumario_section(self):
         text = (

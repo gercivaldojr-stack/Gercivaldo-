@@ -79,9 +79,20 @@ ENUMERATION_PATTERNS = [
     r"^[a-z]\.\s+",        # a. texto, b. texto
     r"^[ivxlc]+\)\s+",     # i) texto, ii) texto
     r"^[IVXLC]+\)\s+",     # I) texto, II) texto
+    r"^[IVXLC]+\s*[-–—]\s+",  # I — texto, II – texto (alíneas romanas com travessão)
     r"^\d+\)\s+",           # 1) texto, 2) texto
-    r"^\d+\.\s+",           # 1. texto, 2. texto
+    r"^\d+\.\d+\.?\s+",    # 1.1 texto, 1.2. texto (subseções numéricas no modo forense)
 ]
+
+# Padrões de seções numeradas forense: \d+\.\s+MAIÚSCULAS → H2
+FORENSE_NUMBERED_H2_PATTERN = re.compile(
+    r"^(\d+)\.\s+([A-ZÁÉÍÓÚÀÂÊÔÃÕÇ][A-ZÁÉÍÓÚÀÂÊÔÃÕÇ\s]{2,})$"
+)
+
+# Padrões de subseções numeradas forense: \d+\.\d+ → H3
+FORENSE_NUMBERED_H3_PATTERN = re.compile(
+    r"^(\d+\.\d+\.?)\s+(.*)"
+)
 
 # ============================================================
 # Padrões de headings jurídicos — modo doutrina
@@ -154,12 +165,17 @@ def generate_toc(text: str) -> str:
     return "\n".join(toc_lines)
 
 
-def apply_legal_heuristics(text: str, mode: str = "forense") -> str:
+def apply_legal_heuristics(
+    text: str,
+    mode: str = "forense",
+    detect_citations: bool = True,
+) -> str:
     """Aplica heurísticas jurídicas ao texto para gerar headings Markdown.
 
     Args:
         text: Texto limpo.
         mode: 'forense' para peças processuais, 'doutrina' para livros/artigos.
+        detect_citations: Se True, detecta citações jurisprudenciais como blockquote (P7).
 
     Returns:
         Texto com headings Markdown aplicados.
@@ -193,13 +209,25 @@ def apply_legal_heuristics(text: str, mode: str = "forense") -> str:
         result.append(converted)
 
     structured = "\n".join(result)
-    structured = detect_blockquotes(structured)
+    # Citações jurisprudenciais apenas no modo forense (quando habilitado)
+    citations_enabled = detect_citations and mode == "forense"
+    structured = detect_blockquotes(structured, detect_citations=citations_enabled)
     return structured
 
 
 def _is_enumeration(line: str) -> bool:
-    """Verifica se a linha é um item de enumeração (a), b), 1., etc.)."""
-    return any(re.match(p, line) for p in ENUMERATION_PATTERNS)
+    """Verifica se a linha é um item de enumeração (a), b), 1., I —, 1.1, etc.).
+
+    NÃO considera enumeração se for seção numerada com título em MAIÚSCULAS
+    (ex: '1. DOS FATOS' → é heading, não enumeração).
+    """
+    for p in ENUMERATION_PATTERNS:
+        if re.match(p, line):
+            # Exceção: \d+\.\s+MAIÚSCULAS é seção numerada, não enumeração
+            if re.match(r"^\d+\.\s+[A-ZÁÉÍÓÚÀÂÊÔÃÕÇ][A-ZÁÉÍÓÚÀÂÊÔÃÕÇ\s]{2,}$", line.strip()):
+                return False
+            return True
+    return False
 
 
 def _apply_forense(line: str) -> str:
@@ -211,7 +239,7 @@ def _apply_forense(line: str) -> str:
         if re.match(pattern, upper_line, re.IGNORECASE):
             return f"# {line}"
 
-    # H2: endereçamento ao juiz
+    # H2: endereçamento ao juiz (EXCELENTÍSSIMO → H2)
     for pattern in FORENSE_ENDERECAMENTO_PATTERNS:
         if re.match(pattern, upper_line, re.IGNORECASE):
             return f"## {line}"
@@ -224,6 +252,14 @@ def _apply_forense(line: str) -> str:
     # Ignorar itens de enumeração — nunca viram heading
     if _is_enumeration(line):
         return line
+
+    # M5: Seções numeradas \d+\.\s+MAIÚSCULAS → H2
+    if FORENSE_NUMBERED_H2_PATTERN.match(line.strip()):
+        return f"## {line}"
+
+    # M5: Subseções numeradas \d+\.\d+ → H3 (somente linhas curtas)
+    if len(line) < 100 and FORENSE_NUMBERED_H3_PATTERN.match(line.strip()):
+        return f"### {line}"
 
     # H3: subseções Da/Do/Das/Dos (linhas curtas, < 100 chars)
     if len(line) < 100:
@@ -330,14 +366,29 @@ _CITATION_ATTR_PATTERNS = [
 ]
 
 
-def detect_blockquotes(text: str) -> str:
+# P7: Padrão para citações jurisprudenciais inline
+# Detecta parágrafos começando com "No HC ...", "No AgRg no RHC ...", etc.
+_JURISPRUDENCE_CITATION_START = re.compile(
+    r"^No\s+(?:HC|RHC|AgRg\s+no\s+(?:RHC|AREsp|REsp)|REsp|ARE|AREsp|ADI|ADPF|RE|"
+    r"EREsp|PEDILEF|AgInt\s+no\s+(?:AREsp|REsp)|RMS|CC)\s+[\d./-]+",
+    re.IGNORECASE,
+)
+
+
+def detect_blockquotes(text: str, detect_citations: bool = True) -> str:
     """Detecta e formata blocos de citação jurídica como blockquotes Markdown.
 
-    Detecta dois tipos:
+    Detecta três tipos:
     1. Ementas: bloco iniciado por "EMENTA" até a próxima linha em branco dupla
        ou próximo heading.
     2. Citações longas com atribuição a tribunais: bloco entre aspas ou
        seguido de referência a tribunal (STF, STJ, TJ...).
+    3. Citações jurisprudenciais inline: parágrafos que começam com
+       "No HC/REsp/AgRg..." referenciando julgados específicos (P7).
+
+    Args:
+        text: Texto com headings aplicados.
+        detect_citations: Se True, detecta citações jurisprudenciais (tipo 3).
     """
     lines = text.split("\n")
     result = []
@@ -418,6 +469,30 @@ def detect_blockquotes(text: str) -> str:
                 # Não é citação jurídica, manter original
                 result.extend(quote_lines)
                 continue
+
+        # --- Tipo 3: Citação jurisprudencial inline (P7) ---
+        if detect_citations and _JURISPRUDENCE_CITATION_START.match(stripped):
+            citation_lines = [stripped]
+            i += 1
+            # Coletar linhas do mesmo parágrafo (sem linha em branco)
+            while i < len(lines):
+                s = lines[i].strip()
+                if not s or s.startswith("#"):
+                    break
+                # Se próxima linha é outra citação ou texto normal, parar
+                if _JURISPRUDENCE_CITATION_START.match(s):
+                    break
+                citation_lines.append(s)
+                i += 1
+
+            logger.debug(
+                "Detectada citação jurisprudencial: %s...",
+                citation_lines[0][:60],
+            )
+            for cl in citation_lines:
+                result.append(f"> {cl}")
+            result.append("")
+            continue
 
         result.append(line)
         i += 1
