@@ -5,7 +5,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from core.metadata import generate_frontmatter
+from core.metadata import extract_procedural_metadata, generate_frontmatter
 
 
 class TestGenerateFrontmatter:
@@ -200,3 +200,88 @@ class TestExtractPieceMetadata:
         result = generate_frontmatter(text, extract_metadata=True)
         assert "impetrante:" in result
         assert "DAVI MENDANHA" in result
+
+
+class TestExtractProceduralMetadata:
+    """M1 v4.1: Metadados processuais detalhados."""
+
+    def test_extracts_autor_with_cpf(self):
+        text = "Autor: JOÃO DA SILVA, inscrito no CPF 123.456.789-00\nTexto."
+        meta = {}
+        extract_procedural_metadata(text, meta)
+        assert "autor" in meta
+        assert "JOÃO DA SILVA" in meta["autor"]
+        assert "CPF: 123.456.789-00" in meta["autor"]
+
+    def test_extracts_autor_without_cpf(self):
+        text = "Requerente: MARIA SOUZA\nTexto."
+        meta = {}
+        extract_procedural_metadata(text, meta)
+        assert "autor" in meta
+        assert "MARIA SOUZA" in meta["autor"]
+
+    def test_extracts_reu(self):
+        text = "Réu: BANCO DO BRASIL S.A.\ncom sede em Brasilia."
+        meta = {}
+        extract_procedural_metadata(text, meta)
+        assert "reu" in meta
+        assert "BANCO DO BRASIL" in meta["reu"]
+
+    def test_extracts_comarca(self):
+        text = "Comarca de Goiânia\nTexto do documento."
+        meta = {}
+        extract_procedural_metadata(text, meta)
+        assert "comarca" in meta
+        assert "Goiânia" in meta["comarca"]
+
+    def test_extracts_foro(self):
+        text = "Foro da Capital\nTexto."
+        meta = {}
+        extract_procedural_metadata(text, meta)
+        assert "comarca" in meta
+        assert "Capital" in meta["comarca"]
+
+    def test_pedido_liminar_true(self):
+        text = "Requer a concessão de MEDIDA LIMINAR.\nTexto."
+        meta = {}
+        extract_procedural_metadata(text, meta)
+        assert meta["pedido_liminar"] == "true"
+
+    def test_pedido_liminar_false(self):
+        text = "Requer a condenação do réu ao pagamento."
+        meta = {}
+        extract_procedural_metadata(text, meta)
+        assert meta["pedido_liminar"] == "false"
+
+    def test_pedido_tutela_urgencia(self):
+        text = "Requer pedido de tutela de urgência."
+        meta = {}
+        extract_procedural_metadata(text, meta)
+        assert meta["pedido_liminar"] == "true"
+
+    def test_acoes_cumuladas_danos_morais(self):
+        text = "Ação de indenização por danos morais c/c indenização por danos materiais."
+        meta = {}
+        extract_procedural_metadata(text, meta)
+        assert "acoes_cumuladas" in meta
+        assert "danos morais" in meta["acoes_cumuladas"]
+        assert "danos materiais" in meta["acoes_cumuladas"]
+
+    def test_acoes_cumuladas_obrigacao_fazer(self):
+        text = "Ação de obrigação de fazer c/c reparação de danos."
+        meta = {}
+        extract_procedural_metadata(text, meta)
+        assert "acoes_cumuladas" in meta
+        assert "obrigação de fazer" in meta["acoes_cumuladas"]
+
+    def test_no_acoes_when_absent(self):
+        text = "Texto simples sem ação identificável."
+        meta = {}
+        extract_procedural_metadata(text, meta)
+        assert "acoes_cumuladas" not in meta
+
+    def test_normal_text_no_autor(self):
+        text = "O réu deve pagar indenização."
+        meta = {}
+        extract_procedural_metadata(text, meta)
+        assert "autor" not in meta

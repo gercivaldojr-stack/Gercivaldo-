@@ -120,8 +120,34 @@ with st.sidebar:
     )
 
     st.divider()
+    st.subheader("v4.1")
+
+    extract_procedural = st.checkbox(
+        "Extrair metadados processuais",
+        value=False,
+        disabled=(mode != "forense"),
+        help="Extrai autor (CPF), reu, comarca, pedido liminar e acoes "
+             "cumuladas. Apenas modo forense.",
+    )
+
+    separate_enums = st.checkbox(
+        "Separar itens enumerados",
+        value=False,
+        disabled=(mode != "forense"),
+        help="Converte listas com ponto-e-virgula (;) em lista Markdown.",
+    )
+
+    wrap_notes = st.checkbox(
+        "Demarcar notas internas",
+        value=False,
+        disabled=(mode != "forense"),
+        help="Detecta secoes como 'Observacoes finais de uso', "
+             "'Nota de adequacao' e envolve em blockquote.",
+    )
+
+    st.divider()
     st.caption("Formatos aceitos: PDF, DOCX, TXT, MD")
-    st.caption("v4.0 | Python 3.10+ | PyMuPDF | python-docx")
+    st.caption("v4.1 | Python 3.10+ | PyMuPDF | python-docx")
 
 # ============================================================
 # Upload de arquivos
@@ -155,6 +181,9 @@ if uploaded_files:
                 remove_headers_footers=remove_hf,
                 detect_citations=detect_citations and mode == "forense",
                 extract_metadata=extract_metadata,
+                extract_procedural=extract_procedural and mode == "forense",
+                separate_enums=separate_enums and mode == "forense",
+                wrap_notes=wrap_notes and mode == "forense",
             )
             results.append(result)
 

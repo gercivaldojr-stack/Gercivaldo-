@@ -169,6 +169,8 @@ def apply_legal_heuristics(
     text: str,
     mode: str = "forense",
     detect_citations: bool = True,
+    separate_enums: bool = False,
+    wrap_notes: bool = False,
 ) -> str:
     """Aplica heurísticas jurídicas ao texto para gerar headings Markdown.
 
@@ -176,6 +178,8 @@ def apply_legal_heuristics(
         text: Texto limpo.
         mode: 'forense' para peças processuais, 'doutrina' para livros/artigos.
         detect_citations: Se True, detecta citações jurisprudenciais como blockquote (P7).
+        separate_enums: Se True, separa itens enumerados com ; em lista (M2).
+        wrap_notes: Se True, demarca notas internas em blockquote (M3).
 
     Returns:
         Texto com headings Markdown aplicados.
@@ -212,6 +216,15 @@ def apply_legal_heuristics(
     # Citações jurisprudenciais apenas no modo forense (quando habilitado)
     citations_enabled = detect_citations and mode == "forense"
     structured = detect_blockquotes(structured, detect_citations=citations_enabled)
+
+    # M2: Separar itens enumerados (modo forense)
+    if separate_enums and mode == "forense":
+        structured = separate_enumerated_items(structured)
+
+    # M3: Demarcar notas internas (modo forense)
+    if wrap_notes and mode == "forense":
+        structured = wrap_internal_notes(structured)
+
     return structured
 
 
@@ -492,6 +505,157 @@ def detect_blockquotes(text: str, detect_citations: bool = True) -> str:
             for cl in citation_lines:
                 result.append(f"> {cl}")
             result.append("")
+            continue
+
+        result.append(line)
+        i += 1
+
+    return "\n".join(result)
+
+
+# ============================================================
+# M2: Separação de itens enumerados (v4.1)
+# ============================================================
+
+# Padrão: texto terminando em : seguido de itens separados por ;
+_ENUM_SEMICOLON_RE = re.compile(r";\s*$")
+
+
+def separate_enumerated_items(text: str) -> str:
+    """Separa itens enumerados por ponto-e-vírgula em lista Markdown (v4.1 M2).
+
+    Padrão 1: Frase terminada em ':' seguida de itens com ';' no final
+    → cada item vira '- item' em lista Markdown.
+
+    Padrão 2: Linhas soltas terminadas com ';'
+    → insere linha em branco entre cada item para melhor legibilidade.
+    """
+    lines = text.split("\n")
+    result = []
+    i = 0
+
+    while i < len(lines):
+        line = lines[i]
+        stripped = line.strip()
+
+        # Detectar introdução de lista (frase terminando em :)
+        if stripped.endswith(":") and len(stripped) > 10 and not stripped.startswith("#"):
+            result.append(line)
+            i += 1
+            # Coletar itens subsequentes com ;
+            items_found = []
+            while i < len(lines):
+                s = lines[i].strip()
+                if not s:
+                    break
+                if s.startswith("#") or s.startswith(">"):
+                    break
+                # Item terminando com ; ou . (último item)
+                items_found.append(s)
+                if not _ENUM_SEMICOLON_RE.search(s):
+                    # Último item (sem ;) — incluir e parar
+                    i += 1
+                    break
+                i += 1
+
+            if len(items_found) >= 2 and any(
+                _ENUM_SEMICOLON_RE.search(it) for it in items_found
+            ):
+                # Converter para lista Markdown
+                result.append("")
+                for item in items_found:
+                    # Remover alíneas já existentes (a), b), etc.)
+                    clean_item = re.sub(r"^[a-z]\)\s*", "", item)
+                    clean_item = re.sub(r"^[ivxlc]+\)\s*", "", clean_item, flags=re.IGNORECASE)
+                    result.append(f"- {clean_item}")
+                result.append("")
+                logger.debug(
+                    "M2: %d itens enumerados separados após '%s'",
+                    len(items_found), stripped[:40],
+                )
+            else:
+                # Não é lista, manter original
+                result.extend(items_found)
+            continue
+
+        # Padrão 2: Linhas soltas com ;
+        if _ENUM_SEMICOLON_RE.search(stripped) and len(stripped) > 15:
+            result.append(line)
+            # Verificar se próxima linha também termina com ;
+            if i + 1 < len(lines) and _ENUM_SEMICOLON_RE.search(lines[i + 1].strip()):
+                result.append("")  # Linha em branco entre itens
+            i += 1
+            continue
+
+        result.append(line)
+        i += 1
+
+    return "\n".join(result)
+
+
+# ============================================================
+# M3: Notas internas — envolver em blockquote (v4.1)
+# ============================================================
+
+_INTERNAL_NOTE_PATTERNS = [
+    re.compile(r"^(?:#{1,6}\s+)?Observa[çc][oõ]es?\s+finais?\s+de\s+uso", re.IGNORECASE),
+    re.compile(r"^(?:#{1,6}\s+)?Nota\s+de\s+adequa[çc][aã]o", re.IGNORECASE),
+    re.compile(r"^(?:#{1,6}\s+)?Instru[çc][oõ]es?\s+para\s+protocolo", re.IGNORECASE),
+    re.compile(r"^(?:#{1,6}\s+)?Nota\s+interna", re.IGNORECASE),
+    re.compile(r"^(?:#{1,6}\s+)?Observa[çc][oõ]es?\s+ao\s+advogado", re.IGNORECASE),
+    re.compile(r"^(?:#{1,6}\s+)?Instru[çc][oõ]es?\s+ao\s+cliente", re.IGNORECASE),
+]
+
+
+def wrap_internal_notes(text: str) -> str:
+    """Detecta e demarca seções de notas internas como blockquote (v4.1 M3).
+
+    Detecta seções como:
+    - "Observações finais de uso"
+    - "Nota de adequação"
+    - "Instruções para protocolo"
+
+    Envolve o conteúdo em blockquote com aviso.
+    """
+    lines = text.split("\n")
+    result = []
+    i = 0
+
+    while i < len(lines):
+        line = lines[i]
+        stripped = line.strip()
+
+        # Detectar início de nota interna
+        is_note_start = any(p.match(stripped) for p in _INTERNAL_NOTE_PATTERNS)
+        if is_note_start:
+            note_lines = [stripped]
+            i += 1
+            blank_count = 0
+
+            # Coletar conteúdo da nota até fim do documento ou próximo heading
+            while i < len(lines):
+                s = lines[i].strip()
+                # Parar em heading (exceto se faz parte da nota)
+                if s.startswith("#") and not any(p.match(s) for p in _INTERNAL_NOTE_PATTERNS):
+                    break
+                if not s:
+                    blank_count += 1
+                    if blank_count >= 3:
+                        break
+                    i += 1
+                    continue
+                blank_count = 0
+                note_lines.append(s)
+                i += 1
+
+            # Formatar como blockquote com aviso
+            result.append("")
+            result.append("> **Nota interna** — nao integra a peca processual.")
+            result.append(">")
+            for nl in note_lines:
+                result.append(f"> {nl}")
+            result.append("")
+            logger.debug("M3: Nota interna detectada: %s", note_lines[0][:50])
             continue
 
         result.append(line)

@@ -5,7 +5,14 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from core.legal_heuristics import apply_legal_heuristics, detect_blockquotes, generate_toc, remove_sumario
+from core.legal_heuristics import (
+    apply_legal_heuristics,
+    detect_blockquotes,
+    generate_toc,
+    remove_sumario,
+    separate_enumerated_items,
+    wrap_internal_notes,
+)
 
 
 class TestForenseMode:
@@ -431,3 +438,164 @@ class TestGenerateToc:
         assert result.success
         assert "## Sumário" in result.markdown
         assert "DOS FATOS" in result.markdown
+
+
+class TestSeparateEnumeratedItems:
+    """M2 v4.1: Separação de itens enumerados por ponto-e-vírgula."""
+
+    def test_basic_enumeration(self):
+        text = (
+            "Diante do exposto, requer-se:\n"
+            "a) o conhecimento do recurso;\n"
+            "b) a reforma da sentença;\n"
+            "c) a condenação do réu."
+        )
+        result = separate_enumerated_items(text)
+        assert "- " in result
+        assert "o conhecimento do recurso;" in result
+        assert "a reforma da sentença;" in result
+
+    def test_items_become_list(self):
+        text = (
+            "Requer ao final:\n"
+            "primeiro item;\n"
+            "segundo item;\n"
+            "terceiro item."
+        )
+        result = separate_enumerated_items(text)
+        assert result.count("- ") >= 3
+
+    def test_no_conversion_without_colon(self):
+        text = "Texto normal sem dois-pontos\nOutra linha normal."
+        result = separate_enumerated_items(text)
+        assert "- " not in result
+
+    def test_no_conversion_single_item(self):
+        text = "Requer-se:\napenas um item."
+        result = separate_enumerated_items(text)
+        # Single item should not be converted
+        assert "- " not in result
+
+    def test_loose_semicolon_items(self):
+        """Linhas soltas com ; recebem espaço entre elas."""
+        text = (
+            "Primeiro argumento relevante;\n"
+            "segundo argumento relevante;\n"
+            "terceiro argumento final."
+        )
+        result = separate_enumerated_items(text)
+        # Deve ter linhas em branco entre itens com ;
+        assert "\n\n" in result
+
+    def test_heading_not_affected(self):
+        text = "# Título\nTexto normal."
+        result = separate_enumerated_items(text)
+        assert result == text
+
+    def test_integrated_in_pipeline(self):
+        text = (
+            "DOS PEDIDOS\n\n"
+            "Diante do exposto, requer-se:\n"
+            "a) procedência do pedido;\n"
+            "b) condenação do réu;\n"
+            "c) honorários."
+        )
+        result = apply_legal_heuristics(
+            text, mode="forense", separate_enums=True,
+        )
+        assert "- " in result
+
+    def test_not_applied_in_doutrina(self):
+        text = (
+            "Conceitos fundamentais:\n"
+            "primeiro conceito;\n"
+            "segundo conceito."
+        )
+        result = apply_legal_heuristics(
+            text, mode="doutrina", separate_enums=True,
+        )
+        assert "- " not in result
+
+
+class TestWrapInternalNotes:
+    """M3 v4.1: Notas internas demarcadas em blockquote."""
+
+    def test_observacoes_finais(self):
+        text = (
+            "Texto da peça.\n\n"
+            "Observações finais de uso\n"
+            "Este modelo deve ser adaptado.\n"
+            "Verifique os prazos."
+        )
+        result = wrap_internal_notes(text)
+        assert "> **Nota interna**" in result
+        assert "> Este modelo deve ser adaptado." in result
+        assert "> Verifique os prazos." in result
+
+    def test_nota_adequacao(self):
+        text = (
+            "Texto principal.\n\n"
+            "Nota de adequação\n"
+            "Adaptar conforme o caso concreto."
+        )
+        result = wrap_internal_notes(text)
+        assert "> **Nota interna**" in result
+        assert "> Adaptar conforme" in result
+
+    def test_instrucoes_protocolo(self):
+        text = (
+            "Texto.\n\n"
+            "Instruções para protocolo\n"
+            "Protocolar no prazo de 15 dias."
+        )
+        result = wrap_internal_notes(text)
+        assert "> **Nota interna**" in result
+        assert "> Protocolar no prazo" in result
+
+    def test_normal_text_not_wrapped(self):
+        text = "O réu deve pagar indenização.\nTexto normal."
+        result = wrap_internal_notes(text)
+        assert "> " not in result
+
+    def test_heading_stops_note(self):
+        text = (
+            "Observações finais de uso\n"
+            "Adaptar modelo.\n\n"
+            "# Novo Título\n"
+            "Conteúdo do título."
+        )
+        result = wrap_internal_notes(text)
+        assert "> Adaptar modelo." in result
+        assert "> # Novo Título" not in result
+        assert "Conteúdo do título." in result
+
+    def test_integrated_in_pipeline(self):
+        text = (
+            "DOS FATOS\n\nTexto.\n\n"
+            "Observações finais de uso\n"
+            "Verificar antes de protocolar."
+        )
+        result = apply_legal_heuristics(
+            text, mode="forense", wrap_notes=True,
+        )
+        assert "> **Nota interna**" in result
+
+    def test_not_applied_when_disabled(self):
+        text = (
+            "Observações finais de uso\n"
+            "Verificar prazos."
+        )
+        result = apply_legal_heuristics(
+            text, mode="forense", wrap_notes=False,
+        )
+        assert "> **Nota interna**" not in result
+
+    def test_not_applied_in_doutrina(self):
+        text = (
+            "Observações finais de uso\n"
+            "Verificar prazos."
+        )
+        result = apply_legal_heuristics(
+            text, mode="doutrina", wrap_notes=True,
+        )
+        assert "> **Nota interna**" not in result
