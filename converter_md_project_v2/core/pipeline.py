@@ -16,18 +16,26 @@ logger = logging.getLogger(__name__)
 
 
 def _strip_existing_frontmatter(text: str) -> str:
-    """Remove frontmatter YAML e sumário embutido que vieram do arquivo original.
+    """Remove frontmatter YAML, sumário embutido e lixo residual do original.
 
     Remove:
-    - Blocos entre --- no início do texto
-    - Blocos ## Sumário / ## Índice seguidos de listas - [...] até linha em branco dupla
+    - Blocos entre --- no início do texto (frontmatter YAML padrão)
+    - Linhas de YAML inline soltas (titulo:, data:, status:, etc.)
+    - Blocos ## Sumário / ## Índice seguidos de listas - [...] até linha em branco
+    - Blocos de TOC malformado: 3+ linhas consecutivas com "- [" sem "](#"
     """
     import re
     lines = text.split("\n")
     result = []
     i = 0
 
-    # Pular frontmatter YAML no início
+    _yaml_inline_re = re.compile(
+        r"^(?:titulo|data|status|convertido_em|proad|orgao_emissor|tipo_peca"
+        r"|paciente|autor|reu|impetrante|autoridade_coatora|pedido_liminar"
+        r"|processo_origem|comarca|acoes_cumuladas)\s*:", re.IGNORECASE
+    )
+
+    # Pular frontmatter YAML no início (bloco entre ---)
     if lines and lines[0].strip() == "---":
         i = 1
         while i < len(lines):
@@ -39,10 +47,10 @@ def _strip_existing_frontmatter(text: str) -> str:
     # Processar resto do texto
     while i < len(lines):
         stripped = lines[i].strip()
-        # Detectar sumário embutido do arquivo original
+
+        # Detectar sumário embutido com heading
         if re.match(r"^#{1,3}\s+(?:Sumário|Índice|SUMÁRIO|ÍNDICE)\s*$", stripped):
             i += 1
-            # Pular linhas do sumário (listas com - [...] e linhas em branco)
             while i < len(lines):
                 s = lines[i].strip()
                 if s.startswith("- [") or s.startswith("  - [") or s.startswith("    - [") or not s:
@@ -52,6 +60,31 @@ def _strip_existing_frontmatter(text: str) -> str:
                 else:
                     break
             continue
+
+        # Remover linhas de YAML inline soltas (fora de bloco ---)
+        if _yaml_inline_re.match(stripped):
+            i += 1
+            continue
+
+        # Remover linhas que parecem YAML genérico (chave: "valor")
+        if re.match(r"^\w+:\s+[\"'].*[\"']\s*\w*:\s*[\"']", stripped):
+            i += 1
+            continue
+
+        # Detectar TOC malformado: 3+ linhas "- [" sem "](#"
+        if stripped.startswith("- [") and "](#" not in stripped:
+            malformed_start = i
+            j = i
+            while j < len(lines) and lines[j].strip().startswith("- ["):
+                j += 1
+            if j - malformed_start >= 3:
+                # 3+ linhas de TOC malformado — pular todas
+                i = j
+                # Pular linhas em branco após o bloco
+                while i < len(lines) and not lines[i].strip():
+                    i += 1
+                continue
+
         result.append(lines[i])
         i += 1
 
@@ -128,6 +161,9 @@ def convert_document(
             separate_enums=separate_enums, wrap_notes=wrap_notes,
         )
 
+        # 3a. Remover frontmatter/sumário/TOC residual do arquivo original
+        structured = _strip_existing_frontmatter(structured)
+
         # 3b. Frontmatter YAML (com metadados expandidos P8 + processuais M1)
         frontmatter = generate_frontmatter(
             structured, filename=result.filename, extract_metadata=extract_metadata,
@@ -148,8 +184,6 @@ def convert_document(
                 frontmatter = "\n".join(fm_lines)
 
         # 3c. Sumário automático (P6)
-        # Remover frontmatter/sumário residual do texto original antes de gerar TOC
-        structured = _strip_existing_frontmatter(structured)
         toc = generate_toc(structured)
         if toc:
             structured = frontmatter + "\n\n" + toc + "\n" + structured

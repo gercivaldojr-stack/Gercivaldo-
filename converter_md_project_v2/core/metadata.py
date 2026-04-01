@@ -45,6 +45,7 @@ def generate_frontmatter(
         r"|paciente|autor|reu|impetrante|autoridade_coatora|pedido_liminar"
         r"|processo_origem|comarca|acoes_cumuladas)\s*:", re.IGNORECASE
     )
+    _skip_title_words = {"sumário", "índice", "sumario", "indice"}
     for line in text.splitlines():
         stripped = line.strip().lstrip("#").strip()
         if not stripped or len(stripped) <= 5:
@@ -56,6 +57,12 @@ def generate_frontmatter(
         if _yaml_keys.match(stripped):
             continue
         if re.match(r"^\w+:\s+[\"']", stripped):
+            continue
+        # Pular "Sumário" / "Índice" — não são títulos de documento
+        if stripped.lower() in _skip_title_words:
+            continue
+        # Pular linhas de TOC (- [Texto](# ou - [Texto)
+        if stripped.startswith("- ["):
             continue
         meta["titulo"] = stripped[:120]
         break
