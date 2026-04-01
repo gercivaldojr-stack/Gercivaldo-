@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 
 from .cleaning import clean_text
 from .extractors import extract_text
-from .legal_heuristics import apply_legal_heuristics
+from .legal_heuristics import apply_legal_heuristics, generate_toc
 from .piece_separator import format_separated_pieces, separate_pieces
 from .metadata import generate_frontmatter
 
@@ -74,7 +74,13 @@ def convert_document(
 
         # 3b. Frontmatter YAML
         frontmatter = generate_frontmatter(structured, filename=result.filename)
-        structured = frontmatter + "\n\n" + structured
+
+        # 3c. Sumário automático (P6)
+        toc = generate_toc(structured)
+        if toc:
+            structured = frontmatter + "\n\n" + toc + "\n" + structured
+        else:
+            structured = frontmatter + "\n\n" + structured
 
         # 4. Separação de peças (opcional)
         if separate:

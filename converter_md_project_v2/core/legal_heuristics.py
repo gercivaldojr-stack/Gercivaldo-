@@ -113,6 +113,47 @@ SUMARIO_PATTERNS = [
 ]
 
 
+def generate_toc(text: str) -> str:
+    """Gera um índice/sumário automático a partir dos headings Markdown.
+
+    Percorre o texto procurando linhas com #, ## e ### e gera uma lista
+    de links Markdown com indentação hierárquica.
+
+    Args:
+        text: Texto Markdown com headings aplicados.
+
+    Returns:
+        Bloco Markdown do sumário, ou string vazia se < 2 headings.
+    """
+    headings = []
+    for line in text.split("\n"):
+        stripped = line.strip()
+        match = re.match(r"^(#{1,3})\s+(.+)$", stripped)
+        if match:
+            level = len(match.group(1))
+            title = match.group(2).strip()
+            headings.append((level, title))
+
+    if len(headings) < 2:
+        return ""
+
+    # Gerar slug para link âncora (compatível com GitHub/Streamlit Markdown)
+    def _slugify(title: str) -> str:
+        slug = title.lower()
+        slug = re.sub(r"[^\w\s-]", "", slug)
+        slug = re.sub(r"[\s]+", "-", slug.strip())
+        return slug
+
+    toc_lines = ["## Sumário", ""]
+    for level, title in headings:
+        indent = "  " * (level - 1)
+        slug = _slugify(title)
+        toc_lines.append(f"{indent}- [{title}](#{slug})")
+
+    toc_lines.append("")
+    return "\n".join(toc_lines)
+
+
 def apply_legal_heuristics(text: str, mode: str = "forense") -> str:
     """Aplica heurísticas jurídicas ao texto para gerar headings Markdown.
 
@@ -151,7 +192,9 @@ def apply_legal_heuristics(text: str, mode: str = "forense") -> str:
 
         result.append(converted)
 
-    return "\n".join(result)
+    structured = "\n".join(result)
+    structured = detect_blockquotes(structured)
+    return structured
 
 
 def _is_enumeration(line: str) -> bool:
@@ -260,5 +303,123 @@ def remove_sumario(text: str) -> str:
 
         if not in_sumario:
             result.append(line)
+
+    return "\n".join(result)
+
+
+# ============================================================
+# P5: Detecção de blockquotes (ementas e citações jurídicas)
+# ============================================================
+
+# Padrões que iniciam um bloco de citação/ementa
+_BLOCKQUOTE_START_PATTERNS = [
+    re.compile(r"^(?:#{1,6}\s+)?EMENTA\s*[:.]?\s*$", re.IGNORECASE),
+    re.compile(r"^(?:#{1,6}\s+)?EMENTA\s*[-–—:.]", re.IGNORECASE),
+]
+
+# Padrões que indicam atribuição de citação jurisprudencial
+_CITATION_ATTR_PATTERNS = [
+    re.compile(
+        r"\(\s*(?:STF|STJ|TST|TJ[A-Z]{2}|TRF|TRT|TSE)\b.*?\)",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"\(\s*(?:RE|REsp|HC|MS|ADI|ADPF|AgRg|AI|RMS)\s+[\d./-]+",
+        re.IGNORECASE,
+    ),
+]
+
+
+def detect_blockquotes(text: str) -> str:
+    """Detecta e formata blocos de citação jurídica como blockquotes Markdown.
+
+    Detecta dois tipos:
+    1. Ementas: bloco iniciado por "EMENTA" até a próxima linha em branco dupla
+       ou próximo heading.
+    2. Citações longas com atribuição a tribunais: bloco entre aspas ou
+       seguido de referência a tribunal (STF, STJ, TJ...).
+    """
+    lines = text.split("\n")
+    result = []
+    i = 0
+
+    while i < len(lines):
+        line = lines[i]
+        stripped = line.strip()
+
+        # --- Tipo 1: Bloco de ementa ---
+        is_ementa_start = any(p.match(stripped) for p in _BLOCKQUOTE_START_PATTERNS)
+        if is_ementa_start:
+            # Coletar linhas da ementa
+            ementa_lines = [stripped]
+            i += 1
+            blank_count = 0
+            while i < len(lines):
+                s = lines[i].strip()
+                # Parar em: heading, linha em branco dupla, ou início de nova seção
+                if s.startswith("#"):
+                    break
+                if not s:
+                    blank_count += 1
+                    if blank_count >= 2:
+                        break
+                    i += 1
+                    continue
+                blank_count = 0
+                ementa_lines.append(s)
+                i += 1
+
+            # Formatar como blockquote
+            for el in ementa_lines:
+                result.append(f"> {el}")
+            result.append("")
+            continue
+
+        # --- Tipo 2: Citação entre aspas com atribuição a tribunal ---
+        if stripped.startswith(("\u201c", '"')) and len(stripped) > 50:
+            # Coletar bloco de citação até fechar aspas
+            quote_lines = [stripped]
+            has_closing = "\u201d" in stripped or (
+                stripped.startswith('"') and stripped.count('"') >= 2
+            )
+            i += 1
+
+            if not has_closing:
+                while i < len(lines):
+                    s = lines[i].strip()
+                    if not s:
+                        break
+                    quote_lines.append(s)
+                    if "\u201d" in s or s.endswith('"'):
+                        has_closing = True
+                        i += 1
+                        break
+                    i += 1
+
+            # Verificar atribuição a tribunal na última linha ou próxima
+            full_quote = " ".join(quote_lines)
+            has_attribution = any(
+                p.search(full_quote) for p in _CITATION_ATTR_PATTERNS
+            )
+            # Checar próxima linha para atribuição
+            if not has_attribution and i < len(lines):
+                next_line = lines[i].strip()
+                if any(p.search(next_line) for p in _CITATION_ATTR_PATTERNS):
+                    has_attribution = True
+                    quote_lines.append(next_line)
+                    i += 1
+
+            if has_attribution and has_closing:
+                for ql in quote_lines:
+                    result.append(f"> {ql}")
+                result.append("")
+                continue
+            else:
+                # Não é citação jurídica, manter original
+                result.extend(quote_lines)
+                continue
+
+        result.append(line)
+        i += 1
 
     return "\n".join(result)

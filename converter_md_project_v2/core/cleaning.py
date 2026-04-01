@@ -54,6 +54,7 @@ def clean_text(text: str, remove_headers_footers: bool = True) -> str:
         text = remove_repeated_headers_footers(text)
 
     text = rejoin_broken_paragraphs(text)
+    text = normalize_legal_citations(text)
     text = normalize_paragraphs(text)
 
     return text.strip()
@@ -305,6 +306,49 @@ def remove_ereader_boilerplate(text: str) -> str:
         cut_start, cut_end, keyword_count,
     )
     return "\n".join(lines[:cut_start] + lines[cut_end:])
+
+
+def normalize_legal_citations(text: str) -> str:
+    """Normaliza citações jurídicas para formato padronizado.
+
+    Padroniza variações de:
+      - Artigo → Art.
+      - Parágrafo → §
+      - Inciso (numerais romanos após Art./§)
+      - Alínea (letras após inciso)
+    """
+    # "Artigo 5" / "artigo 5" / "ART. 5" / "ART 5" → "Art. 5"
+    text = re.sub(
+        r"\b[Aa][Rr][Tt](?:[Ii][Gg][Oo])?\s*\.?\s*(\d)",
+        r"Art. \1",
+        text,
+    )
+
+    # "Paragrafo" / "parágrafo" / "par." / "PAR." → "§"
+    # Só quando seguido de número ou "único"
+    text = re.sub(
+        r"\b[Pp][Aa][Rr](?:[ÁáAa][Gg][Rr][Aa][Ff][Oo])?\.?\s*(?=\d|[Úú]nico)",
+        "§ ",
+        text,
+    )
+
+    # "§§" duplicado → "§"
+    text = re.sub(r"§\s*§", "§", text)
+
+    # Normalizar espaçamento: "Art.5" → "Art. 5", "§1" → "§ 1"
+    text = re.sub(r"(Art\.)\s*(\d)", r"\1 \2", text)
+    text = re.sub(r"(§)\s*(\d)", r"\1 \2", text)
+
+    # "Art. 5 , § 2" → "Art. 5, § 2" (remover espaço antes de vírgula)
+    text = re.sub(r"(Art\.\s*\d+[º°]?)\s+,", r"\1,", text)
+
+    # Normalizar "º" em artigos: "Art. 5o" → "Art. 5º"
+    text = re.sub(r"(Art\.\s*\d+)\s*[oO](?=\s|,|$|\.)", r"\1º", text)
+
+    # Normalizar "alinea" → "alínea"
+    text = re.sub(r"\b[Aa]linea\b", "alínea", text)
+
+    return text
 
 
 def _latin_ratio(text: str) -> float:
