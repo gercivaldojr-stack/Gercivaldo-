@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from .cleaning import clean_text
 from .extractors import extract_text
 from .legal_heuristics import apply_legal_heuristics, generate_toc
+from .metadata import extract_procedural_metadata
 from .piece_separator import format_separated_pieces, separate_pieces
 from .metadata import generate_frontmatter
 
@@ -36,6 +37,9 @@ def convert_document(
     remove_headers_footers: bool = True,
     detect_citations: bool = True,
     extract_metadata: bool = False,
+    extract_procedural: bool = False,
+    separate_enums: bool = False,
+    wrap_notes: bool = False,
 ) -> ConversionResult:
     """Converte um documento jurídico para Markdown estruturado.
 
@@ -48,6 +52,9 @@ def convert_document(
         remove_headers_footers: Se True, remove cabeçalhos/rodapés repetidos.
         detect_citations: Se True, detecta citações jurisprudenciais como blockquote (P7).
         extract_metadata: Se True, extrai metadados expandidos da peça (P8).
+        extract_procedural: Se True, extrai metadados processuais (M1 v4.1).
+        separate_enums: Se True, separa itens enumerados com ; (M2 v4.1).
+        wrap_notes: Se True, demarca notas internas em blockquote (M3 v4.1).
 
     Returns:
         ConversionResult com o Markdown e metadados.
@@ -76,12 +83,27 @@ def convert_document(
         logger.info("Aplicando heurísticas jurídicas (modo: %s)...", mode)
         structured = apply_legal_heuristics(
             cleaned, mode=mode, detect_citations=detect_citations,
+            separate_enums=separate_enums, wrap_notes=wrap_notes,
         )
 
-        # 3b. Frontmatter YAML (com metadados expandidos P8)
+        # 3b. Frontmatter YAML (com metadados expandidos P8 + processuais M1)
         frontmatter = generate_frontmatter(
             structured, filename=result.filename, extract_metadata=extract_metadata,
         )
+
+        # M1: Metadados processuais (apenas modo forense)
+        if extract_procedural and mode == "forense":
+            proc_meta: dict = {}
+            extract_procedural_metadata(structured, proc_meta)
+            if proc_meta:
+                extra_lines = []
+                for key, value in proc_meta.items():
+                    safe_value = str(value).replace('"', '\\"')
+                    extra_lines.append(f'{key}: "{safe_value}"')
+                # Insert before closing ---
+                fm_lines = frontmatter.split("\n")
+                fm_lines = fm_lines[:-1] + extra_lines + [fm_lines[-1]]
+                frontmatter = "\n".join(fm_lines)
 
         # 3c. Sumário automático (P6)
         toc = generate_toc(structured)
@@ -123,6 +145,9 @@ def convert_batch(
     remove_headers_footers: bool = True,
     detect_citations: bool = True,
     extract_metadata: bool = False,
+    extract_procedural: bool = False,
+    separate_enums: bool = False,
+    wrap_notes: bool = False,
 ) -> list[ConversionResult]:
     """Converte múltiplos documentos em lote.
 
@@ -133,6 +158,9 @@ def convert_batch(
         remove_headers_footers: Se True, remove cabeçalhos/rodapés.
         detect_citations: Se True, detecta citações jurisprudenciais (P7).
         extract_metadata: Se True, extrai metadados expandidos (P8).
+        extract_procedural: Se True, extrai metadados processuais (M1 v4.1).
+        separate_enums: Se True, separa itens enumerados (M2 v4.1).
+        wrap_notes: Se True, demarca notas internas (M3 v4.1).
 
     Returns:
         Lista de ConversionResult.
@@ -150,6 +178,9 @@ def convert_batch(
             remove_headers_footers=remove_headers_footers,
             detect_citations=detect_citations,
             extract_metadata=extract_metadata,
+            extract_procedural=extract_procedural,
+            separate_enums=separate_enums,
+            wrap_notes=wrap_notes,
         )
         results.append(result)
 

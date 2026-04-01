@@ -155,3 +155,87 @@ def _extract_piece_metadata(text: str, meta: dict) -> None:
         re.IGNORECASE,
     ):
         meta["pedido_liminar"] = "true"
+
+
+def extract_procedural_metadata(text: str, meta: dict) -> None:
+    """Extrai metadados processuais detalhados (v4.1 M1).
+
+    Campos extraídos:
+      - autor: nome do autor (com CPF se presente)
+      - reu: nome do réu/requerido
+      - comarca: comarca/foro do processo
+      - pedido_liminar: "true"/"false"
+      - acoes_cumuladas: lista de ações cumuladas
+
+    Apenas modo forense.
+    """
+    search_area = text[:5000]
+
+    # Autor com CPF opcional
+    autor_match = re.search(
+        r"(?:Autor|Requerente|Exequente|Impetrante)[:\s]+([A-ZÀ-Ú][A-ZÀ-Ú\s]+)"
+        r"(?:,?\s*(?:inscrit[oa]\s+no\s+CPF|CPF)\s*(?:n[º°.]?\s*)?(\d{3}[.\s]?\d{3}[.\s]?\d{3}[-.\s]?\d{2}))?",
+        search_area,
+        re.IGNORECASE,
+    )
+    if autor_match:
+        autor_name = autor_match.group(1).strip()[:120]
+        cpf = autor_match.group(2)
+        if cpf:
+            meta["autor"] = f"{autor_name} (CPF: {cpf.strip()})"
+        else:
+            meta["autor"] = autor_name
+
+    # Réu
+    reu_match = re.search(
+        r"(?:Réu|Requerido|Executado|Impetrado|Autoridade\s+coatora)[:\s]+"
+        r"(.+?)(?:\n|,\s*(?:inscrit|qualificad|com\s+sede))",
+        search_area,
+        re.IGNORECASE,
+    )
+    if reu_match:
+        meta["reu"] = reu_match.group(1).strip()[:120]
+
+    # Comarca
+    comarca_match = re.search(
+        r"(?:Comarca|Foro|Vara)\s+(?:de\s+|da\s+|do\s+)?(.+?)(?:\n|$)",
+        search_area,
+        re.IGNORECASE,
+    )
+    if comarca_match:
+        meta["comarca"] = comarca_match.group(1).strip()[:80]
+
+    # Pedido liminar (booleano explícito)
+    has_liminar = bool(re.search(
+        r"(?:pedido\s+(?:de\s+)?(?:liminar|tutela\s+(?:de\s+)?urgência|"
+        r"tutela\s+antecipada)|MEDIDA\s+LIMINAR|"
+        r"Contém\s+pedido\s+(?:liminar|urgência|tutela)|"
+        r"inaudita\s+altera\s+parte)",
+        search_area,
+        re.IGNORECASE,
+    ))
+    meta["pedido_liminar"] = "true" if has_liminar else "false"
+
+    # Ações cumuladas
+    acoes = []
+    acoes_patterns = [
+        (r"(?:ação\s+de\s+)?indeniza[çc]ão\s+por\s+danos?\s+morais?", "indenização por danos morais"),
+        (r"(?:ação\s+de\s+)?indeniza[çc]ão\s+por\s+danos?\s+materiais?", "indenização por danos materiais"),
+        (r"(?:ação\s+de\s+)?obriga[çc]ão\s+de\s+fazer", "obrigação de fazer"),
+        (r"(?:ação\s+de\s+)?obriga[çc]ão\s+de\s+n[aã]o\s+fazer", "obrigação de não fazer"),
+        (r"repara[çc]ão\s+de\s+danos", "reparação de danos"),
+        (r"revis[aã]o\s+contratual", "revisão contratual"),
+        (r"cobran[çc]a", "cobrança"),
+        (r"reintegra[çc]ão\s+de\s+posse", "reintegração de posse"),
+        (r"consigna[çc]ão\s+em\s+pagamento", "consignação em pagamento"),
+        (r"(?:rescis[aã]o|resolu[çc]ão)\s+contratual", "rescisão contratual"),
+        (r"repeti[çc]ão\s+de\s+ind[eé]bito", "repetição de indébito"),
+        (r"declarat[oó]ria\s+de\s+(?:nulidade|inexist[eê]ncia)", "declaratória de nulidade"),
+    ]
+    lower_text = search_area.lower()
+    for pattern, label in acoes_patterns:
+        if re.search(pattern, lower_text):
+            acoes.append(label)
+
+    if acoes:
+        meta["acoes_cumuladas"] = ", ".join(acoes)
