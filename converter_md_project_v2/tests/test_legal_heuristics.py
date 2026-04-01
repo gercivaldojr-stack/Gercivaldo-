@@ -5,7 +5,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from core.legal_heuristics import apply_legal_heuristics, remove_sumario
+from core.legal_heuristics import apply_legal_heuristics, detect_blockquotes, generate_toc, remove_sumario
 
 
 class TestForenseMode:
@@ -192,3 +192,108 @@ class TestRemoveSumario:
     def test_no_sumario(self):
         text = "Texto normal sem sumário."
         assert remove_sumario(text) == text
+
+
+class TestDetectBlockquotes:
+    def test_ementa_block(self):
+        text = (
+            "## EMENTA\n"
+            "Direito civil. Responsabilidade objetiva.\n"
+            "Dano moral configurado.\n"
+            "\n\n"
+            "## ACÓRDÃO"
+        )
+        result = detect_blockquotes(text)
+        assert "> " in result
+        assert "> Direito civil" in result or "> EMENTA" in result
+
+    def test_ementa_with_colon(self):
+        text = (
+            "EMENTA:\n"
+            "Recurso especial. Consumidor.\n"
+            "\n\n"
+            "Conteúdo normal."
+        )
+        result = detect_blockquotes(text)
+        assert "> EMENTA:" in result
+        assert "> Recurso especial" in result
+
+    def test_ementa_stops_at_heading(self):
+        text = (
+            "EMENTA\n"
+            "Texto da ementa.\n"
+            "# ACÓRDÃO\n"
+            "Conteúdo do acórdão."
+        )
+        result = detect_blockquotes(text)
+        assert "> Texto da ementa" in result
+        assert "> # ACÓRDÃO" not in result
+
+    def test_citation_with_tribunal(self):
+        text = (
+            '\u201cO consumidor tem direito à reparação integral dos danos sofridos.\u201d '
+            '(STJ, REsp 1.234.567/SP, Rel. Min. Fulano, j. 10/03/2024)'
+        )
+        result = detect_blockquotes(text)
+        assert result.startswith("> ")
+
+    def test_no_blockquote_for_normal_text(self):
+        text = "O réu deve pagar indenização por danos morais."
+        result = detect_blockquotes(text)
+        assert "> " not in result
+
+    def test_short_quote_not_blockquoted(self):
+        text = '"Sim" disse o juiz.'
+        result = detect_blockquotes(text)
+        assert "> " not in result
+
+    def test_quote_without_tribunal_not_blockquoted(self):
+        text = '\u201cTexto longo de citação sem atribuição a tribunal nenhum, apenas um trecho genérico.\u201d'
+        result = detect_blockquotes(text)
+        assert "> " not in result
+
+
+class TestGenerateToc:
+    def test_basic_toc(self):
+        text = "# Título\n\nTexto.\n\n## Dos Fatos\n\nTexto.\n\n## Dos Pedidos\n\nTexto."
+        toc = generate_toc(text)
+        assert "## Sumário" in toc
+        assert "- [Título]" in toc
+        assert "- [Dos Fatos]" in toc
+        assert "- [Dos Pedidos]" in toc
+
+    def test_toc_indentation(self):
+        text = "# Cap 1\n\n## Seção 1\n\n### Sub 1\n\nTexto."
+        toc = generate_toc(text)
+        assert "- [Cap 1]" in toc
+        assert "  - [Seção 1]" in toc
+        assert "    - [Sub 1]" in toc
+
+    def test_toc_empty_for_single_heading(self):
+        text = "# Título Único\n\nApenas um heading."
+        toc = generate_toc(text)
+        assert toc == ""
+
+    def test_toc_empty_for_no_headings(self):
+        text = "Texto sem headings.\nMais texto."
+        toc = generate_toc(text)
+        assert toc == ""
+
+    def test_toc_slug_generation(self):
+        text = "# Título\n\n## Dos Fatos Relevantes\n\nTexto."
+        toc = generate_toc(text)
+        assert "(#dos-fatos-relevantes)" in toc
+
+    def test_toc_integrated_in_pipeline(self):
+        """TOC deve aparecer no resultado final do pipeline."""
+        from core.pipeline import convert_document
+
+        content = "DOS FATOS\n\nTexto dos fatos.\n\nDOS PEDIDOS\n\nTexto dos pedidos."
+        result = convert_document(
+            file_bytes=content.encode("utf-8"),
+            filename="peticao.txt",
+            mode="forense",
+        )
+        assert result.success
+        assert "## Sumário" in result.markdown
+        assert "DOS FATOS" in result.markdown

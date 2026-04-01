@@ -8,6 +8,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from core.cleaning import (
     clean_text,
     fix_hyphenation,
+    normalize_legal_citations,
     normalize_paragraphs,
     normalize_whitespace,
     rejoin_broken_paragraphs,
@@ -236,6 +237,56 @@ class TestRemoveCorruptedGlyphs:
         text = "Texto\n\n\nMais texto"
         result = remove_corrupted_glyphs(text)
         assert result == text
+
+
+class TestNormalizeLegalCitations:
+    def test_artigo_full_word(self):
+        assert "Art. 5" in normalize_legal_citations("Artigo 5")
+
+    def test_artigo_uppercase(self):
+        assert "Art. 5" in normalize_legal_citations("ART. 5")
+
+    def test_artigo_lowercase(self):
+        assert "Art. 5" in normalize_legal_citations("art. 5")
+
+    def test_artigo_no_dot(self):
+        assert "Art. 5" in normalize_legal_citations("Art 5")
+
+    def test_artigo_no_space(self):
+        assert "Art. 5" in normalize_legal_citations("Art.5")
+
+    def test_paragrafo_full_word(self):
+        result = normalize_legal_citations("Parágrafo 1")
+        assert "§ 1" in result
+
+    def test_paragrafo_par_dot(self):
+        result = normalize_legal_citations("Par. 2")
+        assert "§ 2" in result
+
+    def test_paragrafo_unico(self):
+        result = normalize_legal_citations("Parágrafo único")
+        assert "§ único" in result
+
+    def test_double_section_sign(self):
+        result = normalize_legal_citations("§§ 1")
+        assert "§ 1" in result
+        assert "§§" not in result
+
+    def test_artigo_ordinal_normalization(self):
+        result = normalize_legal_citations("Art. 5o da CF")
+        assert "Art. 5º" in result
+
+    def test_alinea_normalization(self):
+        result = normalize_legal_citations("conforme alinea a)")
+        assert "alínea" in result
+
+    def test_preserves_normal_text(self):
+        text = "O réu deve pagar indenização."
+        assert normalize_legal_citations(text) == text
+
+    def test_comma_spacing(self):
+        result = normalize_legal_citations("Art. 5 , § 2")
+        assert "Art. 5," in result
 
 
 class TestCleanText:
