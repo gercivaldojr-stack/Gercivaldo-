@@ -672,3 +672,73 @@ class TestGoogleMode:
         text = "a) primeiro item do pedido"
         result = apply_legal_heuristics(text, mode="google")
         assert "**" not in result
+
+
+class TestItalicizeEmenta:
+    """F3: Ementa/resumo da peça envolvida em itálico."""
+
+    def test_ementa_between_title_and_body(self):
+        text = (
+            "PETIÇÃO INICIAL\n"
+            "Ação de indenização por danos morais.\n"
+            "\n"
+            "JOÃO DA SILVA, já qualificado nos autos, vem..."
+        )
+        result = apply_legal_heuristics(text, mode="forense")
+        assert "*Ação de indenização por danos morais.*" in result
+
+    def test_ementa_multiple_lines(self):
+        text = (
+            "HABEAS CORPUS\n"
+            "Constrangimento ilegal.\n"
+            "Excesso de prazo.\n"
+            "\n"
+            "Trata-se de habeas corpus impetrado..."
+        )
+        result = apply_legal_heuristics(text, mode="forense")
+        assert "*Constrangimento ilegal.*" in result
+        assert "*Excesso de prazo.*" in result
+
+    def test_no_ementa_when_no_title(self):
+        text = "Texto normal sem título de peça.\nOutro parágrafo."
+        result = apply_legal_heuristics(text, mode="forense")
+        assert "*Texto normal" not in result
+
+    def test_no_ementa_when_body_immediately_follows(self):
+        text = (
+            "SENTENÇA\n"
+            "Trata-se de ação ordinária..."
+        )
+        result = apply_legal_heuristics(text, mode="forense")
+        # Sem linhas entre título e corpo — nada para italicizar
+        assert "*Trata-se" not in result
+
+    def test_ementa_disabled(self):
+        text = (
+            "PETIÇÃO INICIAL\n"
+            "Resumo da petição.\n"
+            "\n"
+            "JOÃO DA SILVA, já qualificado..."
+        )
+        result = apply_legal_heuristics(text, mode="forense", detect_ementa=False)
+        assert "*Resumo da petição.*" not in result
+
+    def test_ementa_in_google_mode(self):
+        text = (
+            "PETIÇÃO INICIAL\n"
+            "Ação de cobrança.\n"
+            "\n"
+            "MARIA SOUZA, já qualificada nos autos..."
+        )
+        result = apply_legal_heuristics(text, mode="google")
+        assert "*Ação de cobrança.*" in result
+
+    def test_already_formatted_lines_skipped(self):
+        text = (
+            "HABEAS CORPUS\n"
+            "*Já em itálico.*\n"
+            "\n"
+            "Trata-se de habeas corpus..."
+        )
+        result = apply_legal_heuristics(text, mode="forense")
+        assert "**Já em itálico.*" not in result

@@ -180,6 +180,7 @@ def apply_legal_heuristics(
     detect_citations: bool = True,
     separate_enums: bool = False,
     wrap_notes: bool = False,
+    detect_ementa: bool = True,
 ) -> str:
     """Aplica heurísticas jurídicas ao texto para gerar headings Markdown.
 
@@ -190,6 +191,7 @@ def apply_legal_heuristics(
         detect_citations: Se True, detecta citações jurisprudenciais como blockquote (P7).
         separate_enums: Se True, separa itens enumerados com ; em lista (M2).
         wrap_notes: Se True, demarca notas internas em blockquote (M3).
+        detect_ementa: Se True, detecta ementa/resumo e envolve em itálico (F3).
 
     Returns:
         Texto com headings Markdown aplicados.
@@ -245,6 +247,10 @@ def apply_legal_heuristics(
     # M3: Demarcar notas internas (modo forense e google)
     if wrap_notes and mode in ("forense", "google"):
         structured = wrap_internal_notes(structured)
+
+    # F3: Detectar ementa/resumo e envolver em itálico
+    if detect_ementa and mode in ("forense", "google"):
+        structured = _italicize_ementa(structured)
 
     return structured
 
@@ -396,6 +402,81 @@ def _apply_google(line: str) -> str:
                 return f"**{line}**"
 
     return line
+
+
+# ============================================================
+# F3: Detecção de ementa/resumo — envolver em itálico
+# ============================================================
+
+# Padrões que indicam início do corpo (após a ementa)
+_BODY_START_PATTERNS = [
+    re.compile(r"^[A-ZÀ-Ú][A-ZÀ-Ú\s]+,\s+(?:já\s+qualificad|brasileiro|brasileira|pessoa\s+jurídica)", re.IGNORECASE),
+    re.compile(r"^(?:O|A)\s+(?:Autor|Réu|Requerente|Requerido|Impetrante|Paciente)\b", re.IGNORECASE),
+    re.compile(r"^(?:Trata-se|Cuida-se|Versam?\s+os\s+autos)", re.IGNORECASE),
+    re.compile(r"^(?:##?\s+)?\d+\.\s+", re.IGNORECASE),
+    re.compile(r"^\*\*\d+\.", re.IGNORECASE),
+]
+
+# Padrões que indicam título de peça (antes da ementa)
+_PIECE_TITLE_RE = re.compile(
+    r"^(?:#{1,3}\s+|\*\*)?(?:PETIÇÃO|CONTESTAÇÃO|SENTENÇA|ACÓRDÃO|HABEAS\s+CORPUS|"
+    r"MANDADO|RECURSO|AGRAVO|APELAÇÃO|MANIFESTAÇÃO|IMPUGNAÇÃO|RÉPLICA|"
+    r"MINUTA|EMBARGOS)",
+    re.IGNORECASE,
+)
+
+
+def _italicize_ementa(text: str) -> str:
+    """Detecta bloco de ementa entre título da peça e corpo, envolve em itálico.
+
+    A ementa é o texto entre o título da peça (PETIÇÃO, MANIFESTAÇÃO, etc.)
+    e o início do corpo (nome qualificado, "Trata-se", seção numerada).
+    """
+    lines = text.split("\n")
+    # Encontrar posição do título da peça
+    title_idx = -1
+    for i, line in enumerate(lines):
+        if _PIECE_TITLE_RE.match(line.strip()):
+            title_idx = i
+            break
+
+    if title_idx == -1:
+        return text
+
+    # Encontrar início do corpo (após a ementa)
+    body_idx = -1
+    for i in range(title_idx + 1, min(title_idx + 20, len(lines))):
+        stripped = lines[i].strip()
+        if not stripped:
+            continue
+        if any(p.match(stripped) for p in _BODY_START_PATTERNS):
+            body_idx = i
+            break
+
+    if body_idx == -1 or body_idx <= title_idx + 1:
+        return text
+
+    # Coletar linhas da ementa (entre título e corpo, excluindo vazias)
+    ementa_lines = []
+    for i in range(title_idx + 1, body_idx):
+        stripped = lines[i].strip()
+        if stripped:
+            ementa_lines.append(i)
+
+    if not ementa_lines:
+        return text
+
+    # Envolver linhas da ementa em itálico
+    result = list(lines)
+    for idx in ementa_lines:
+        line = result[idx].strip()
+        # Não italicizar se já tem formatação
+        if line.startswith("*") or line.startswith(">") or line.startswith("#"):
+            continue
+        result[idx] = f"*{line}*"
+
+    logger.debug("F3: Ementa detectada nas linhas %d-%d", ementa_lines[0], ementa_lines[-1])
+    return "\n".join(result)
 
 
 def remove_sumario(text: str) -> str:
