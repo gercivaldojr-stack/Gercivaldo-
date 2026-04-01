@@ -185,7 +185,8 @@ def apply_legal_heuristics(
 
     Args:
         text: Texto limpo.
-        mode: 'forense' para peças processuais, 'doutrina' para livros/artigos.
+        mode: 'forense' para peças processuais, 'doutrina' para livros/artigos,
+              'google' para saída estilo Google Drive (negrito inline, sem headings).
         detect_citations: Se True, detecta citações jurisprudenciais como blockquote (P7).
         separate_enums: Se True, separa itens enumerados com ; em lista (M2).
         wrap_notes: Se True, demarca notas internas em blockquote (M3).
@@ -209,6 +210,17 @@ def apply_legal_heuristics(
             result.append("")
             continue
 
+        # Modo google: não usar headings existentes, converter para bold
+        if mode == "google":
+            if stripped.startswith("#"):
+                # Converter heading existente para bold inline
+                plain = stripped.lstrip("#").strip()
+                result.append(f"**{plain}**")
+                continue
+            converted = _apply_google(stripped)
+            result.append(converted)
+            continue
+
         # Não modificar linhas que já são headings markdown
         if stripped.startswith("#"):
             result.append(line)
@@ -222,16 +234,16 @@ def apply_legal_heuristics(
         result.append(converted)
 
     structured = "\n".join(result)
-    # Citações jurisprudenciais apenas no modo forense (quando habilitado)
-    citations_enabled = detect_citations and mode == "forense"
+    # Citações jurisprudenciais nos modos forense e google (quando habilitado)
+    citations_enabled = detect_citations and mode in ("forense", "google")
     structured = detect_blockquotes(structured, detect_citations=citations_enabled)
 
     # M2: Separar itens enumerados (modo forense)
     if separate_enums and mode == "forense":
         structured = separate_enumerated_items(structured)
 
-    # M3: Demarcar notas internas (modo forense)
-    if wrap_notes and mode == "forense":
+    # M3: Demarcar notas internas (modo forense e google)
+    if wrap_notes and mode in ("forense", "google"):
         structured = wrap_internal_notes(structured)
 
     return structured
@@ -316,6 +328,72 @@ def _apply_doutrina(line: str) -> str:
             if len(line) > 200:
                 return line
             return f"### {line}"
+
+    return line
+
+
+# ============================================================
+# Modo Google — negrito inline, sem headings (F2)
+# ============================================================
+
+# Padrões que recebem negrito inline no modo google
+_GOOGLE_ENDERECAMENTO_RE = re.compile(
+    r"^(EXCELENTÍSSIM[OA]\s+.+|AO\s+JUÍZ[OA]?\s+.+|AO\s+DOUTOR\s+.+|"
+    r"AO\s+MERITÍSSIMO\s+.+|AO\s+MM\.?\s+.+|"
+    r"Processo\s+(?:de\s+origem\s+)?n[º°.]?\s*.+|"
+    r"Procedimento\s+.+|"
+    r"Autora?:\s*.+|Réu:\s*.+|Requerente:\s*.+|Requerido:\s*.+|"
+    r"Paciente:\s*.+|Impetrante:\s*.+|Autoridade\s+coatora:\s*.+)",
+    re.IGNORECASE,
+)
+
+_GOOGLE_NUMBERED_SECTION_RE = re.compile(
+    r"^(\d+)\.\s+([A-ZÀ-Ú].*)"
+)
+
+_GOOGLE_NUMBERED_SUBSECTION_RE = re.compile(
+    r"^(\d+\.\d+\.?)\s+(.*)"
+)
+
+
+def _apply_google(line: str) -> str:
+    """Aplica padrões do modo google — negrito inline, sem headings (#).
+
+    - Endereçamento judicial → **bold inline**
+    - Seções numeradas (1. TEXTO) → **1. TEXTO**
+    - Subtópicos (3.1. texto) → **3.1. texto**
+    - Títulos de peça (PETIÇÃO, SENTENÇA) → **TÍTULO**
+    - Tudo sem usar # headings
+    """
+    upper_line = line.upper().strip()
+
+    # Títulos de peça → bold
+    for pattern in FORENSE_H1_PATTERNS:
+        if re.match(pattern, upper_line, re.IGNORECASE):
+            return f"**{line}**"
+
+    # Endereçamento → bold
+    if _GOOGLE_ENDERECAMENTO_RE.match(line.strip()):
+        return f"**{line}**"
+
+    # Seções nomeadas (DOS FATOS, DO DIREITO, etc.) → bold
+    for pattern in FORENSE_H2_PATTERNS:
+        if re.match(pattern, upper_line, re.IGNORECASE):
+            return f"**{line}**"
+
+    # Seções numeradas (1. DOS FATOS) → bold
+    if _GOOGLE_NUMBERED_SECTION_RE.match(line.strip()):
+        return f"**{line}**"
+
+    # Subtópicos (3.1. texto) — somente linhas curtas
+    if len(line) < 100 and _GOOGLE_NUMBERED_SUBSECTION_RE.match(line.strip()):
+        return f"**{line}**"
+
+    # Subseções Da/Do/Das/Dos → bold
+    if len(line) < 100:
+        for pattern in FORENSE_H3_SUBSECTION_PATTERNS:
+            if re.match(pattern, line):
+                return f"**{line}**"
 
     return line
 

@@ -599,3 +599,76 @@ class TestWrapInternalNotes:
             text, mode="doutrina", wrap_notes=True,
         )
         assert "> **Nota interna**" not in result
+
+
+class TestGoogleMode:
+    """F2: Modo 'google' — negrito inline, sem headings."""
+
+    def test_enderecamento_bold_no_heading(self):
+        text = "EXCELENTÍSSIMO SENHOR DOUTOR JUIZ DE DIREITO"
+        result = apply_legal_heuristics(text, mode="google")
+        assert "**EXCELENTÍSSIMO" in result
+        assert not result.strip().startswith("#")
+
+    def test_section_bold_no_heading(self):
+        text = "DOS FATOS"
+        result = apply_legal_heuristics(text, mode="google")
+        assert "**DOS FATOS**" in result
+        assert "##" not in result
+
+    def test_numbered_section_bold(self):
+        text = "1. DA SÍNTESE FÁTICA"
+        result = apply_legal_heuristics(text, mode="google")
+        assert "**1. DA SÍNTESE FÁTICA**" in result
+        assert "#" not in result
+
+    def test_subsection_bold(self):
+        text = "3.1. Natureza do ato ilícito"
+        result = apply_legal_heuristics(text, mode="google")
+        assert "**3.1. Natureza do ato ilícito**" in result
+        assert "#" not in result
+
+    def test_titulo_peca_bold(self):
+        text = "HABEAS CORPUS"
+        result = apply_legal_heuristics(text, mode="google")
+        assert "**HABEAS CORPUS**" in result
+        assert "#" not in result
+
+    def test_normal_text_unchanged(self):
+        text = "O réu deve pagar indenização por danos morais."
+        result = apply_legal_heuristics(text, mode="google")
+        assert result.strip() == text
+        assert "**" not in result
+
+    def test_existing_heading_converted_to_bold(self):
+        text = "## DOS PEDIDOS"
+        result = apply_legal_heuristics(text, mode="google")
+        assert "**DOS PEDIDOS**" in result
+        assert "##" not in result
+
+    def test_subsection_da_bold(self):
+        text = "Da responsabilidade objetiva"
+        result = apply_legal_heuristics(text, mode="google")
+        assert "**Da responsabilidade objetiva**" in result
+
+    def test_forense_mode_unchanged(self):
+        """Modo forense continua usando headings."""
+        text = "DOS FATOS"
+        result = apply_legal_heuristics(text, mode="forense")
+        assert result.strip().startswith("## ")
+
+    def test_doutrina_mode_unchanged(self):
+        """Modo doutrina continua usando headings."""
+        text = "CAPÍTULO I - Introdução"
+        result = apply_legal_heuristics(text, mode="doutrina")
+        assert result.strip().startswith("# ")
+
+    def test_processo_bold(self):
+        text = "Processo de origem n.º 5550842-80.2025.8.09.0051"
+        result = apply_legal_heuristics(text, mode="google")
+        assert "**Processo de origem" in result
+
+    def test_enumeration_not_bold(self):
+        text = "a) primeiro item do pedido"
+        result = apply_legal_heuristics(text, mode="google")
+        assert "**" not in result

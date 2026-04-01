@@ -85,10 +85,11 @@ with st.sidebar:
 
     mode = st.radio(
         "Modo de heurísticas",
-        options=["forense", "doutrina"],
+        options=["forense", "doutrina", "google"],
         index=0,
-        help="**Forense**: peças processuais (petição, sentença, etc.)\n\n"
-             "**Doutrina**: livros e artigos jurídicos (capítulos, seções)",
+        help="**Forense**: peças processuais com headings (#/##/###)\n\n"
+             "**Doutrina**: livros e artigos jurídicos (capítulos, seções)\n\n"
+             "**Google**: estilo Google Drive — negrito inline, sem headings",
     )
 
     separate_pieces = st.checkbox(
