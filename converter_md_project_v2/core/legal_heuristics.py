@@ -252,6 +252,10 @@ def apply_legal_heuristics(
     if detect_ementa and mode in ("forense", "google"):
         structured = _italicize_ementa(structured)
 
+    # F4: Formatar assinaturas
+    if mode in ("forense", "google"):
+        structured = format_signatures(structured)
+
     return structured
 
 
@@ -830,3 +834,89 @@ def wrap_internal_notes(text: str) -> str:
         i += 1
 
     return "\n".join(result)
+
+
+# ============================================================
+# F4: Formatação de assinaturas (v4.1)
+# ============================================================
+
+_SIGNATURE_START_PATTERNS = [
+    re.compile(r"^(?:Nestes\s+termos|Termos\s+em\s+que|Nesses\s+termos|Pede\s+deferimento)", re.IGNORECASE),
+    re.compile(r"^(?:Respeitosamente|Atenciosamente|Data\s+supra|P\.\s*deferimento)", re.IGNORECASE),
+]
+
+_LOCATION_DATE_RE = re.compile(
+    r"^[A-ZÀ-Ú][a-záéíóúàâêôãõç]+(?:/[A-Z]{2})?,?\s+\d{1,2}\s+de\s+\w+\s+de\s+\d{4}",
+    re.IGNORECASE,
+)
+
+_OAB_RE = re.compile(r"OAB/[A-Z]{2}\s*(?:n[º°.]*\s*)?\d+", re.IGNORECASE)
+
+
+def format_signatures(text: str) -> str:
+    """Detecta e formata bloco de assinatura no final do documento (F4).
+
+    Detecta padrões como:
+    - "Nestes termos, pede deferimento."
+    - Local e data
+    - Nome do advogado
+    - OAB/UF nº XXXXX
+
+    Formata com separador, negrito no nome e quebras de linha adequadas.
+    """
+    lines = text.split("\n")
+
+    # Procurar início do bloco de assinatura nas últimas 30 linhas
+    sig_start = -1
+    search_start = max(0, len(lines) - 30)
+
+    for i in range(search_start, len(lines)):
+        stripped = lines[i].strip()
+        if any(p.match(stripped) for p in _SIGNATURE_START_PATTERNS):
+            sig_start = i
+            break
+
+    if sig_start == -1:
+        return text
+
+    # Coletar e formatar o bloco de assinatura
+    before = lines[:sig_start]
+    sig_lines = lines[sig_start:]
+
+    formatted = []
+    formatted.append("")
+    formatted.append("---")
+    formatted.append("")
+
+    for line in sig_lines:
+        stripped = line.strip()
+        if not stripped:
+            continue
+
+        # "Nestes termos..." / "Pede deferimento"
+        if any(p.match(stripped) for p in _SIGNATURE_START_PATTERNS):
+            formatted.append(stripped)
+            formatted.append("")
+            continue
+
+        # Local e data
+        if _LOCATION_DATE_RE.match(stripped):
+            formatted.append(stripped)
+            formatted.append("")
+            continue
+
+        # Nome com OAB na mesma linha
+        if _OAB_RE.search(stripped):
+            formatted.append(f"**{stripped}**")
+            continue
+
+        # Nome em maiúsculas (provável nome de advogado/parte)
+        if stripped.isupper() and len(stripped) > 5 and len(stripped) < 80:
+            formatted.append(f"**{stripped}**")
+            continue
+
+        # Resto (OAB separada, cargo, etc.)
+        formatted.append(stripped)
+
+    logger.debug("F4: Bloco de assinatura formatado a partir da linha %d", sig_start)
+    return "\n".join(before + formatted)

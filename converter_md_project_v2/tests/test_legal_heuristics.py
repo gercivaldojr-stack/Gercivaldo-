@@ -8,6 +8,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from core.legal_heuristics import (
     apply_legal_heuristics,
     detect_blockquotes,
+    format_signatures,
     generate_toc,
     remove_sumario,
     separate_enumerated_items,
@@ -742,3 +743,79 @@ class TestItalicizeEmenta:
         )
         result = apply_legal_heuristics(text, mode="forense")
         assert "**Já em itálico.*" not in result
+
+
+class TestFormatSignatures:
+    """F4: Formatar assinaturas com separador e negrito."""
+
+    def test_nestes_termos(self):
+        text = (
+            "Texto do documento.\n\n"
+            "Nestes termos, pede deferimento.\n"
+            "Goiânia/GO, 31 de março de 2026\n"
+            "DAVI MENDANHA LORERO\n"
+            "OAB/GO n.º 41.757"
+        )
+        result = format_signatures(text)
+        assert "---" in result
+        assert "**DAVI MENDANHA LORERO**" in result
+        assert "**OAB/GO n.º 41.757**" in result
+        assert "Goiânia/GO, 31 de março de 2026" in result
+
+    def test_termos_em_que(self):
+        text = (
+            "Conteúdo.\n\n"
+            "Termos em que pede deferimento.\n"
+            "MARIA DA SILVA"
+        )
+        result = format_signatures(text)
+        assert "---" in result
+        assert "**MARIA DA SILVA**" in result
+
+    def test_atenciosamente(self):
+        text = (
+            "Conteúdo.\n\n"
+            "Atenciosamente,\n"
+            "JOÃO FERREIRA\n"
+            "OAB/SP 123.456"
+        )
+        result = format_signatures(text)
+        assert "---" in result
+        assert "**JOÃO FERREIRA**" in result
+
+    def test_no_signature_block(self):
+        text = "Texto normal sem assinatura.\nOutro parágrafo."
+        result = format_signatures(text)
+        assert result == text
+        assert "---" not in result
+
+    def test_location_date_preserved(self):
+        text = (
+            "Texto.\n\n"
+            "Pede deferimento.\n"
+            "São Paulo/SP, 15 de janeiro de 2026\n"
+            "ADVOGADO DA SILVA"
+        )
+        result = format_signatures(text)
+        assert "São Paulo/SP, 15 de janeiro de 2026" in result
+
+    def test_integrated_in_pipeline_forense(self):
+        text = (
+            "DOS FATOS\n\n"
+            "Texto.\n\n"
+            "Nestes termos, pede deferimento.\n"
+            "ADVOGADO NOME"
+        )
+        result = apply_legal_heuristics(text, mode="forense")
+        assert "---" in result
+        assert "**ADVOGADO NOME**" in result
+
+    def test_integrated_in_google_mode(self):
+        text = (
+            "Conteúdo.\n\n"
+            "Nestes termos, pede deferimento.\n"
+            "ADVOGADO NOME"
+        )
+        result = apply_legal_heuristics(text, mode="google")
+        assert "---" in result
+        assert "**ADVOGADO NOME**" in result
