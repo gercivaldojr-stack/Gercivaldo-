@@ -5,12 +5,23 @@ Suporta: PDF, DOCX, TXT, Markdown.
 
 import logging
 import os
+import re
 import tempfile
+from collections import Counter
 from pathlib import Path
 
 import chardet
 
 logger = logging.getLogger(__name__)
+
+# Padrões que identificam rodapés/cabeçalhos de escritório
+_FOOTER_PATTERNS = [
+    re.compile(r"CEP\s*\d{5}-?\d{3}", re.IGNORECASE),
+    re.compile(r"\(\d{2}\)\s*\d[\s.\-]*\d{3,4}[\s.\-]*\d{4}"),
+    re.compile(r"Página\s*\d+", re.IGNORECASE),
+    re.compile(r"Pág\.\s*\d+", re.IGNORECASE),
+    re.compile(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+"),
+]
 
 
 def extract_text(file_path: str, file_bytes: bytes | None = None, filename: str | None = None) -> str:
@@ -54,8 +65,124 @@ def extract_text(file_path: str, file_bytes: bytes | None = None, filename: str 
         raise
 
 
+# ============================================================
+# PDF extraction with table support and footer removal via bbox
+# ============================================================
+
+def _is_footer_text(text: str) -> bool:
+    """Verifica se um texto corresponde a padrões de rodapé."""
+    return any(p.search(text) for p in _FOOTER_PATTERNS)
+
+
+def _detect_hf_zones(doc) -> set[tuple[int, int]]:
+    """Detecta zonas de cabeçalho/rodapé analisando posições y repetidas.
+
+    Retorna set de (page_index, block_index) a remover.
+    """
+    total_pages = len(doc)
+    if total_pages < 3:
+        return set()
+
+    # Coletar y-positions arredondadas de cada bloco de texto por página
+    # key = y_rounded, value = list of (page_idx, block_idx, text)
+    y_positions: dict[int, list[tuple[int, int, str]]] = {}
+
+    for page_idx in range(total_pages):
+        page = doc[page_idx]
+        page_height = page.rect.height
+        blocks = page.get_text("dict")["blocks"]
+        for blk_idx, block in enumerate(blocks):
+            if block["type"] != 0:  # apenas texto
+                continue
+            bbox = block["bbox"]
+            y_top = bbox[1]
+            y_bottom = bbox[3]
+
+            # Só considerar zonas de margem (topo 12% ou rodapé 12% da página)
+            in_header_zone = y_top < page_height * 0.12
+            in_footer_zone = y_bottom > page_height * 0.88
+            if not in_header_zone and not in_footer_zone:
+                continue
+
+            # Extrair texto do bloco
+            block_text = ""
+            for line in block.get("lines", []):
+                for span in line.get("spans", []):
+                    block_text += span.get("text", "")
+            block_text = block_text.strip()
+            if not block_text:
+                continue
+
+            # Arredondar y para agrupar blocos na mesma posição
+            y_key = round(y_top / 5) * 5
+            y_positions.setdefault(y_key, []).append((page_idx, blk_idx, block_text))
+
+    # Identificar y-positions que aparecem em >=50% das páginas
+    remove_set: set[tuple[int, int]] = set()
+    threshold = total_pages * 0.5
+
+    for y_key, entries in y_positions.items():
+        pages_with_this_y = {e[0] for e in entries}
+        if len(pages_with_this_y) >= threshold:
+            for page_idx, blk_idx, text in entries:
+                remove_set.add((page_idx, blk_idx))
+                logger.debug("Removendo bloco hf: página %d, y=%d, text='%s'", page_idx, y_key, text[:50])
+
+    # Também remover blocos com padrões de rodapé mesmo sem repetição de y
+    for page_idx in range(total_pages):
+        page = doc[page_idx]
+        page_height = page.rect.height
+        blocks = page.get_text("dict")["blocks"]
+        for blk_idx, block in enumerate(blocks):
+            if block["type"] != 0:
+                continue
+            bbox = block["bbox"]
+            y_bottom = bbox[3]
+            # Apenas em zona de rodapé
+            if y_bottom <= page_height * 0.85:
+                continue
+            block_text = ""
+            for line in block.get("lines", []):
+                for span in line.get("spans", []):
+                    block_text += span.get("text", "")
+            block_text = block_text.strip()
+            if block_text and _is_footer_text(block_text):
+                remove_set.add((page_idx, blk_idx))
+
+    return remove_set
+
+
+def _table_to_markdown(table) -> str:
+    """Converte uma tabela PyMuPDF para formato Markdown."""
+    try:
+        data = table.extract()
+    except Exception:
+        return ""
+
+    if not data or not data[0]:
+        return ""
+
+    lines = []
+    # Header
+    header = [str(cell or "").strip().replace("\n", " ") for cell in data[0]]
+    lines.append("| " + " | ".join(header) + " |")
+    lines.append("| " + " | ".join("---" for _ in header) + " |")
+    # Rows
+    for row in data[1:]:
+        cells = [str(cell or "").strip().replace("\n", " ") for cell in row]
+        # Pad se necessário
+        while len(cells) < len(header):
+            cells.append("")
+        lines.append("| " + " | ".join(cells[:len(header)]) + " |")
+
+    return "\n".join(lines)
+
+
 def _extract_pdf(file_bytes: bytes, file_path: str | None = None) -> str:
-    """Extrai texto de PDF usando PyMuPDF (fitz), com tratamento para PDFs grandes."""
+    """Extrai texto de PDF usando PyMuPDF (fitz), com:
+    - Extração de tabelas via find_tables() com fallback para texto puro
+    - Remoção de cabeçalhos/rodapés via análise de bbox
+    """
     import fitz
 
     text_parts = []
@@ -74,14 +201,80 @@ def _extract_pdf(file_bytes: bytes, file_path: str | None = None) -> str:
         total_pages = len(doc)
         logger.info("PDF com %d páginas", total_pages)
 
+        # P3: Detectar zonas de cabeçalho/rodapé
+        remove_set = _detect_hf_zones(doc)
+        if remove_set:
+            logger.info("Detectados %d blocos de cabeçalho/rodapé para remoção", len(remove_set))
+
         for i, page in enumerate(doc):
             try:
-                page_text = page.get_text("text")
+                page_parts = []
+
+                # P1: Tentar extrair tabelas
+                tables = []
+                table_rects = []
+                try:
+                    found_tables = page.find_tables()
+                    if found_tables and found_tables.tables:
+                        for tbl in found_tables.tables:
+                            md_table = _table_to_markdown(tbl)
+                            if md_table:
+                                tables.append(md_table)
+                                table_rects.append(tbl.bbox)
+                except Exception as e:
+                    logger.debug("find_tables() falhou na página %d: %s", i + 1, e)
+
+                # Extrair texto via dict para ter controle de bbox
+                blocks = page.get_text("dict")["blocks"]
+                for blk_idx, block in enumerate(blocks):
+                    if block["type"] != 0:
+                        continue
+
+                    # P3: Pular blocos identificados como header/footer
+                    if (i, blk_idx) in remove_set:
+                        continue
+
+                    # P1: Pular blocos que estão dentro de áreas de tabela
+                    blk_bbox = block["bbox"]
+                    in_table = False
+                    for trect in table_rects:
+                        # Verificar sobreposição vertical e horizontal
+                        if (blk_bbox[1] >= trect[1] - 2 and blk_bbox[3] <= trect[3] + 2
+                                and blk_bbox[0] >= trect[0] - 2 and blk_bbox[2] <= trect[2] + 2):
+                            in_table = True
+                            break
+                    if in_table:
+                        continue
+
+                    # Extrair texto do bloco
+                    block_text = ""
+                    for line in block.get("lines", []):
+                        line_text = ""
+                        for span in line.get("spans", []):
+                            line_text += span.get("text", "")
+                        if line_text.strip():
+                            block_text += line_text + "\n"
+
+                    if block_text.strip():
+                        page_parts.append(block_text.strip())
+
+                # Inserir tabelas Markdown na saída da página
+                for md_table in tables:
+                    page_parts.append("\n" + md_table + "\n")
+
+                page_text = "\n".join(page_parts)
                 if page_text.strip():
                     text_parts.append(page_text)
+
             except Exception as e:
                 logger.warning("Erro na página %d: %s", i + 1, e)
-                text_parts.append(f"\n[Erro ao extrair página {i + 1}]\n")
+                # Fallback: extração simples de texto
+                try:
+                    fallback = page.get_text("text")
+                    if fallback.strip():
+                        text_parts.append(fallback)
+                except Exception:
+                    text_parts.append(f"\n[Erro ao extrair página {i + 1}]\n")
 
         doc.close()
     finally:
@@ -91,34 +284,83 @@ def _extract_pdf(file_bytes: bytes, file_path: str | None = None) -> str:
     return "\n".join(text_parts)
 
 
+# ============================================================
+# DOCX extraction with table support via iter_block_items
+# ============================================================
+
+def _iter_block_items(parent):
+    """Itera sobre parágrafos e tabelas na ordem em que aparecem no documento DOCX."""
+    from docx.table import Table
+    from docx.text.paragraph import Paragraph
+    from docx.oxml.ns import qn
+
+    for child in parent.element.body:
+        if child.tag == qn('w:p'):
+            yield Paragraph(child, parent)
+        elif child.tag == qn('w:tbl'):
+            yield Table(child, parent)
+
+
+def _docx_table_to_markdown(table) -> str:
+    """Converte uma tabela python-docx para formato Markdown."""
+    rows = table.rows
+    if not rows:
+        return ""
+
+    lines = []
+    # Header (primeira linha)
+    header_cells = [cell.text.strip().replace("\n", " ") for cell in rows[0].cells]
+    lines.append("| " + " | ".join(header_cells) + " |")
+    lines.append("| " + " | ".join("---" for _ in header_cells) + " |")
+
+    # Data rows
+    for row in list(rows)[1:]:
+        cells = [cell.text.strip().replace("\n", " ") for cell in row.cells]
+        while len(cells) < len(header_cells):
+            cells.append("")
+        lines.append("| " + " | ".join(cells[:len(header_cells)]) + " |")
+
+    return "\n".join(lines)
+
+
 def _extract_docx(file_bytes: bytes, file_path: str | None = None) -> str:
-    """Extrai texto de DOCX preservando estrutura de parágrafos."""
+    """Extrai texto de DOCX preservando estrutura de parágrafos e tabelas."""
     import io
 
     from docx import Document
+    from docx.table import Table
+    from docx.text.paragraph import Paragraph
 
     doc = Document(io.BytesIO(file_bytes))
     parts = []
 
-    for para in doc.paragraphs:
-        text = para.text.strip()
-        if not text:
-            continue
+    for block in _iter_block_items(doc):
+        if isinstance(block, Paragraph):
+            text = block.text.strip()
+            if not text:
+                continue
 
-        style_name = (para.style.name or "").lower() if para.style else ""
+            style_name = (block.style.name or "").lower() if block.style else ""
 
-        if "heading 1" in style_name:
-            parts.append(f"# {text}")
-        elif "heading 2" in style_name:
-            parts.append(f"## {text}")
-        elif "heading 3" in style_name:
-            parts.append(f"### {text}")
-        elif "heading 4" in style_name:
-            parts.append(f"#### {text}")
-        elif "title" in style_name:
-            parts.append(f"# {text}")
-        else:
-            parts.append(text)
+            if "heading 1" in style_name:
+                parts.append(f"# {text}")
+            elif "heading 2" in style_name:
+                parts.append(f"## {text}")
+            elif "heading 3" in style_name:
+                parts.append(f"### {text}")
+            elif "heading 4" in style_name:
+                parts.append(f"#### {text}")
+            elif "title" in style_name:
+                parts.append(f"# {text}")
+            else:
+                parts.append(text)
+
+        elif isinstance(block, Table):
+            md_table = _docx_table_to_markdown(block)
+            if md_table:
+                parts.append("")
+                parts.append(md_table)
+                parts.append("")
 
     return "\n".join(parts)
 

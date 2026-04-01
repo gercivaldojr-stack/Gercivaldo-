@@ -52,7 +52,11 @@ class TestConvertDocument:
             separate=True,
         )
         assert result.success
-        assert len(result.pieces) == 2
+        # 3 peças: frontmatter (Documento Principal) + PETIÇÃO INICIAL + CONTESTAÇÃO
+        assert len(result.pieces) >= 2
+        titles = [p["title"] for p in result.pieces]
+        assert any("PETIÇÃO" in t for t in titles)
+        assert any("CONTESTAÇÃO" in t for t in titles)
 
     def test_docx_conversion(self):
         from docx import Document
