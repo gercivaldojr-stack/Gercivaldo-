@@ -5,7 +5,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from core.metadata import generate_frontmatter
+from core.metadata import extract_procedural_metadata, generate_frontmatter
 
 
 class TestGenerateFrontmatter:
@@ -142,3 +142,82 @@ class TestGenerateFrontmatter:
         text = "Título simples\n\nConteúdo sem menção a órgão."
         result = generate_frontmatter(text)
         assert 'orgao_emissor:' not in result
+
+
+class TestExtractProceduralMetadata:
+    def test_extract_autor_cpf(self):
+        text = "FULANO DE TAL, produtor rural, brasileiro, inscrito no CPF nº 612.067.411-04"
+        meta = extract_procedural_metadata(text)
+        assert "autor" in meta
+        assert "612.067.411-04" in meta["autor"]
+
+    def test_extract_autor_qualificacao(self):
+        text = "CICLANO, produtor rural, brasileiro, CPF 123.456.789-00, vem propor"
+        meta = extract_procedural_metadata(text)
+        assert "autor" in meta
+        assert "Produtor rural" in meta["autor"]
+
+    def test_extract_reu_banco(self):
+        text = "vem propor ação em face de BANCO DO BRASIL S.A., sociedade de economia mista"
+        meta = extract_procedural_metadata(text)
+        assert meta.get("reu") == "BANCO DO BRASIL S.A."
+
+    def test_extract_reu_ltda(self):
+        text = "em face da EMPRESA EXEMPLO LTDA."
+        meta = extract_procedural_metadata(text)
+        assert "EMPRESA EXEMPLO LTDA" in meta.get("reu", "")
+
+    def test_extract_pedido_liminar(self):
+        text = "propor a presente AÇÃO com pedido de tutela de urgência"
+        meta = extract_procedural_metadata(text)
+        assert meta.get("pedido_liminar") is True
+
+    def test_extract_tutela_antecipada(self):
+        text = "Requer tutela antecipada para bloqueio de valores."
+        meta = extract_procedural_metadata(text)
+        assert meta.get("pedido_liminar") is True
+
+    def test_no_false_positive_liminar(self):
+        text = "O autor discute a validade do contrato rural."
+        meta = extract_procedural_metadata(text)
+        assert "pedido_liminar" not in meta
+
+    def test_extract_comarca(self):
+        text = "AO JUIZO DE DIREITO DA Vara Cível da Comarca de Goiânia"
+        meta = extract_procedural_metadata(text)
+        assert "comarca" in meta
+
+    def test_extract_acoes_cumuladas(self):
+        text = "# AÇÃO REVISIONAL\n\nTexto.\n\n# AÇÃO DE OBRIGAÇÃO DE FAZER\n\nTexto."
+        meta = extract_procedural_metadata(text)
+        assert "acoes_cumuladas" in meta
+        assert len(meta["acoes_cumuladas"]) == 2
+
+    def test_no_acoes_when_absent(self):
+        text = "Texto simples sem headings de ações."
+        meta = extract_procedural_metadata(text)
+        assert "acoes_cumuladas" not in meta
+
+    def test_frontmatter_includes_procedural_metadata(self):
+        text = (
+            "PETIÇÃO INICIAL\n\n"
+            "FULANO, produtor rural, brasileiro, CPF 612.067.411-04, "
+            "vem propor ação em face de BANCO DO BRASIL S.A.\n\n"
+            "Requer tutela de urgência."
+        )
+        result = generate_frontmatter(text, filename="peticao.pdf", mode="forense")
+        assert "autor:" in result
+        assert "612.067.411-04" in result
+        assert "reu:" in result
+        assert "pedido_liminar: true" in result
+
+    def test_frontmatter_yaml_list_format(self):
+        text = "# AÇÃO REVISIONAL\n\nTexto.\n\n# AÇÃO DE OBRIGAÇÃO DE FAZER\n\nTexto."
+        result = generate_frontmatter(text, mode="forense")
+        assert "acoes_cumuladas:" in result
+        assert '  - "' in result
+
+    def test_doutrina_mode_skips_procedural(self):
+        text = "FULANO, produtor rural, CPF 612.067.411-04, vem propor ação"
+        result = generate_frontmatter(text, mode="doutrina")
+        assert "autor:" not in result

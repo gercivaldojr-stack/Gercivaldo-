@@ -104,6 +104,27 @@ with st.sidebar:
     )
 
     st.divider()
+    st.subheader("Metadados e estrutura")
+
+    extract_full_metadata = st.checkbox(
+        "Extrair metadados processuais",
+        value=True,
+        help="Extrai autor, réu, comarca, pedido liminar e ações cumuladas para o frontmatter YAML.",
+    )
+
+    separate_items = st.checkbox(
+        "Separar itens enumerados",
+        value=True,
+        help="Insere linha em branco entre itens de pedidos, provas e listas de documentos.",
+    )
+
+    mark_internal_notes = st.checkbox(
+        "Demarcar notas internas",
+        value=True,
+        help="Identifica seções como 'Observações finais de uso' e as envolve em blockquote.",
+    )
+
+    st.divider()
     st.caption("Formatos aceitos: PDF, DOCX, TXT, MD")
     st.caption("Python 3.10+ | PyMuPDF | python-docx")
 
@@ -137,6 +158,9 @@ if uploaded_files:
                 mode=mode,
                 separate=separate_pieces,
                 remove_headers_footers=remove_hf,
+                extract_full_metadata=extract_full_metadata,
+                separate_items=separate_items,
+                mark_internal_notes=mark_internal_notes,
             )
             results.append(result)
 

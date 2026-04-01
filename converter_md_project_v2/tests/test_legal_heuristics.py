@@ -5,7 +5,14 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from core.legal_heuristics import apply_legal_heuristics, detect_blockquotes, generate_toc, remove_sumario
+from core.legal_heuristics import (
+    apply_legal_heuristics,
+    detect_blockquotes,
+    generate_toc,
+    remove_sumario,
+    separate_enumerated_items,
+    wrap_internal_notes,
+)
 
 
 class TestForenseMode:
@@ -297,3 +304,116 @@ class TestGenerateToc:
         assert result.success
         assert "## Sumário" in result.markdown
         assert "DOS FATOS" in result.markdown
+
+
+class TestSeparateEnumeratedItems:
+    def test_colon_followed_by_semicolons_becomes_list(self):
+        text = "Requer o autor:\na citação do réu;\no reconhecimento da incidência;\na procedência do pedido."
+        result = separate_enumerated_items(text)
+        assert "- " in result
+        assert "\n\n" in result
+
+    def test_sequential_semicolons_get_blank_lines(self):
+        text = "primeiro item;\nsegundo item;\nterceiro item."
+        result = separate_enumerated_items(text)
+        # Blank lines inserted between semicolon-terminated items
+        lines = result.split("\n")
+        blank_found = any(l.strip() == "" for l in lines)
+        assert blank_found
+
+    def test_single_semicolon_sentence_unchanged(self):
+        text = "O autor celebrou contrato; porém, não houve adimplemento."
+        result = separate_enumerated_items(text)
+        assert result == text
+
+    def test_heading_not_merged_with_items(self):
+        text = "## DOS PEDIDOS\nprimeiro pedido;\nsegundo pedido;"
+        result = separate_enumerated_items(text)
+        assert "## DOS PEDIDOS" in result
+
+    def test_integrated_in_pipeline(self):
+        from core.pipeline import convert_document
+
+        content = (
+            "DOS PEDIDOS\n\n"
+            "a condenação do réu;\n"
+            "o pagamento de indenização;\n"
+            "os honorários advocatícios."
+        )
+        result = convert_document(
+            file_bytes=content.encode("utf-8"),
+            filename="pedidos.txt",
+            mode="forense",
+        )
+        assert result.success
+        # Semicolons should have blank lines between items
+        lines = result.markdown.split("\n")
+        semicolon_lines = [i for i, l in enumerate(lines) if l.strip().endswith(";")]
+        if semicolon_lines:
+            # At least one blank line should follow a semicolon line
+            has_blank_after = any(
+                i + 1 < len(lines) and lines[i + 1].strip() == ""
+                for i in semicolon_lines
+            )
+            assert has_blank_after
+
+
+class TestWrapInternalNotes:
+    def test_observacoes_finais_wrapped(self):
+        text = "## OBSERVAÇÕES FINAIS DE USO DA MINUTA\nO capítulo dos juros foi reforçado."
+        result = wrap_internal_notes(text)
+        assert "Nota interna" in result
+        assert "> O capítulo dos juros" in result
+
+    def test_nota_adequacao_wrapped(self):
+        text = "## NOTA DE ADEQUAÇÃO\nEsta minuta foi aprimorada."
+        result = wrap_internal_notes(text)
+        assert "Nota interna" in result
+        assert "> Esta minuta" in result
+
+    def test_instrucoes_protocolo_wrapped(self):
+        text = "## INSTRUÇÕES PARA PROTOCOLO\nVerificar antes de protocolar."
+        result = wrap_internal_notes(text)
+        assert "Nota interna" in result
+
+    def test_regular_section_not_wrapped(self):
+        text = "## DOS FATOS\nO autor é produtor rural."
+        result = wrap_internal_notes(text)
+        assert "Nota interna" not in result
+        assert "> O autor" not in result
+
+    def test_internal_block_ends_at_next_heading(self):
+        text = (
+            "## OBSERVAÇÕES FINAIS DE USO\n"
+            "Texto interno.\n"
+            "## DOS PEDIDOS\n"
+            "Texto normal."
+        )
+        result = wrap_internal_notes(text)
+        assert "> Texto interno" in result
+        assert "> Texto normal" not in result
+
+    def test_empty_lines_in_internal_block(self):
+        text = "## OBSERVAÇÕES FINAIS DE USO\nPrimeiro parágrafo.\n\nSegundo parágrafo."
+        result = wrap_internal_notes(text)
+        assert "> Primeiro parágrafo" in result
+        assert "> Segundo parágrafo" in result
+        # Empty line becomes >
+        assert "\n>\n" in result
+
+    def test_integrated_in_pipeline(self):
+        from core.pipeline import convert_document
+
+        # Use heading markers so heuristics preserve them as-is
+        content = (
+            "## DOS FATOS\n\nTexto normal.\n\n"
+            "## OBSERVAÇÕES FINAIS DE USO DA MINUTA\n\n"
+            "Texto da nota interna."
+        )
+        result = convert_document(
+            file_bytes=content.encode("utf-8"),
+            filename="minuta.md",
+            mode="forense",
+        )
+        assert result.success
+        assert "Nota interna" in result.markdown

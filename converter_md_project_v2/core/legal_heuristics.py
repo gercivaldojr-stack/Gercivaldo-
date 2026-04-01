@@ -154,12 +154,19 @@ def generate_toc(text: str) -> str:
     return "\n".join(toc_lines)
 
 
-def apply_legal_heuristics(text: str, mode: str = "forense") -> str:
+def apply_legal_heuristics(
+    text: str,
+    mode: str = "forense",
+    separate_items: bool = True,
+    mark_internal_notes: bool = True,
+) -> str:
     """Aplica heurísticas jurídicas ao texto para gerar headings Markdown.
 
     Args:
         text: Texto limpo.
         mode: 'forense' para peças processuais, 'doutrina' para livros/artigos.
+        separate_items: Se True, separa itens enumerados com linha em branco.
+        mark_internal_notes: Se True, demarca notas internas em blockquote.
 
     Returns:
         Texto com headings Markdown aplicados.
@@ -194,6 +201,13 @@ def apply_legal_heuristics(text: str, mode: str = "forense") -> str:
 
     structured = "\n".join(result)
     structured = detect_blockquotes(structured)
+
+    if mode == "forense" and separate_items:
+        structured = separate_enumerated_items(structured)
+
+    if mode == "forense" and mark_internal_notes:
+        structured = wrap_internal_notes(structured)
+
     return structured
 
 
@@ -421,5 +435,120 @@ def detect_blockquotes(text: str) -> str:
 
         result.append(line)
         i += 1
+
+    return "\n".join(result)
+
+
+# ============================================================
+# M2: Separar itens enumerados por ponto-e-vírgula
+# ============================================================
+
+def separate_enumerated_items(text: str) -> str:
+    """Separa itens enumerados por ponto-e-vírgula com linha em branco.
+
+    Dois padrões:
+    1. Frase introdutória terminada em ':' seguida de >=2 linhas com ';'
+       → converte para lista com bullet '- '.
+    2. Sequência de linhas soltas terminadas em ';'
+       → insere linha em branco entre cada item (sem bullet).
+    """
+    # Padrão 1: frase introdutória + itens por ponto-e-vírgula
+    def _split_after_colon(match):
+        intro = match.group("intro")
+        items_block = match.group("items")
+
+        items = re.split(r";\s*\n", items_block)
+        if len(items) < 2:
+            return match.group(0)
+
+        formatted = []
+        for item in items:
+            item = item.strip()
+            if not item:
+                continue
+            if not item.endswith((".", ";")):
+                item += ";"
+            formatted.append(f"- {item}")
+
+        return intro + "\n\n" + "\n\n".join(formatted)
+
+    text = re.sub(
+        r"(?P<intro>[^\n]+:\s*)\n(?P<items>(?:[^\n]+;\s*\n){2,}[^\n]+[.;]?\s*)",
+        _split_after_colon,
+        text,
+    )
+
+    # Padrão 2: sequência de linhas soltas terminadas em ';'
+    lines = text.split("\n")
+    result = []
+    prev_ended_semicolon = False
+
+    for line in lines:
+        stripped = line.strip()
+
+        if prev_ended_semicolon and stripped and not stripped.startswith("#"):
+            if result and result[-1].strip() != "":
+                result.append("")
+
+        result.append(line)
+        prev_ended_semicolon = stripped.endswith(";")
+
+    return "\n".join(result)
+
+
+# ============================================================
+# M3: Detectar e demarcar notas internas / instruções ao advogado
+# ============================================================
+
+_INTERNAL_NOTE_PATTERNS = [
+    r"OBSERVA[CÇ][OÕÔÃ]ES?\s+FINAIS?",
+    r"NOTA\s+DE\s+ADEQUA[CÇ][AÃÂ]O",
+    r"NOTA\s+(?:AO|PARA\s+O)\s+ADVOGADO",
+    r"INSTRU[CÇ][OÕÔÃ]ES?\s+(?:DE\s+USO|INTERNAS?|PARA\s+PROTOCOLO|ANTES\s+DO\s+PROTOCOLO)",
+    r"CHECKLIST\s+(?:DE|PARA)\s+PROTOCOLO",
+    r"ORIENTA[CÇ][OÕÔÃ]ES?\s+(?:PRELIMINARES?|INTERNAS?|DE\s+USO)",
+    r"RECOMENDA[CÇ][OÕÔÃ]ES?\s+(?:ANTES|PARA|PR[ÉE]VIAS)",
+    r"MINUTA\s*[-–—]\s*(?:VERS[AÃÂ]O|USO\s+INTERNO)",
+]
+
+_INTERNAL_HEADING_REGEX = re.compile(
+    r"^(#{1,3})\s+((?:" + "|".join(_INTERNAL_NOTE_PATTERNS) + r").*?)$",
+    re.MULTILINE | re.IGNORECASE,
+)
+
+
+def wrap_internal_notes(text: str) -> str:
+    """Detecta seções de notas internas e envolve em blockquote com aviso."""
+    lines = text.split("\n")
+    result = []
+    in_internal_block = False
+    internal_heading_level = 0
+
+    for line in lines:
+        heading_match = _INTERNAL_HEADING_REGEX.match(line)
+
+        if heading_match:
+            in_internal_block = True
+            internal_heading_level = len(heading_match.group(1))
+            result.append(line)
+            result.append("")
+            result.append("> **Nota interna — não integra a peça processual.**")
+            result.append(">")
+            continue
+
+        if in_internal_block:
+            next_heading = re.match(r"^(#{1,3})\s+", line)
+            if next_heading and len(next_heading.group(1)) <= internal_heading_level:
+                in_internal_block = False
+                result.append(line)
+                continue
+
+            if line.strip() == "":
+                result.append(">")
+            else:
+                result.append(f"> {line}")
+            continue
+
+        result.append(line)
 
     return "\n".join(result)

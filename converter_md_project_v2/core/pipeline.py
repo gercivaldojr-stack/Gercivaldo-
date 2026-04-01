@@ -34,6 +34,9 @@ def convert_document(
     mode: str = "forense",
     separate: bool = False,
     remove_headers_footers: bool = True,
+    extract_full_metadata: bool = True,
+    separate_items: bool = True,
+    mark_internal_notes: bool = True,
 ) -> ConversionResult:
     """Converte um documento jurídico para Markdown estruturado.
 
@@ -44,6 +47,9 @@ def convert_document(
         mode: 'forense' ou 'doutrina'.
         separate: Se True, tenta separar peças processuais.
         remove_headers_footers: Se True, remove cabeçalhos/rodapés repetidos.
+        extract_full_metadata: Se True (modo forense), extrai autor, réu, comarca, etc.
+        separate_items: Se True (modo forense), separa itens enumerados.
+        mark_internal_notes: Se True (modo forense), demarca notas internas.
 
     Returns:
         ConversionResult com o Markdown e metadados.
@@ -68,12 +74,22 @@ def convert_document(
         cleaned = clean_text(raw_text, remove_headers_footers=remove_headers_footers)
         result.stats["chars_cleaned"] = len(cleaned)
 
-        # 3. Heurísticas jurídicas
+        # 3. Heurísticas jurídicas (inclui M2 e M3)
         logger.info("Aplicando heurísticas jurídicas (modo: %s)...", mode)
-        structured = apply_legal_heuristics(cleaned, mode=mode)
+        structured = apply_legal_heuristics(
+            cleaned,
+            mode=mode,
+            separate_items=separate_items,
+            mark_internal_notes=mark_internal_notes,
+        )
 
-        # 3b. Frontmatter YAML
-        frontmatter = generate_frontmatter(structured, filename=result.filename)
+        # 3b. Frontmatter YAML (inclui M1)
+        frontmatter = generate_frontmatter(
+            structured,
+            filename=result.filename,
+            mode=mode,
+            extract_full_metadata=extract_full_metadata,
+        )
 
         # 3c. Sumário automático (P6)
         toc = generate_toc(structured)
@@ -113,6 +129,9 @@ def convert_batch(
     mode: str = "forense",
     separate: bool = False,
     remove_headers_footers: bool = True,
+    extract_full_metadata: bool = True,
+    separate_items: bool = True,
+    mark_internal_notes: bool = True,
 ) -> list[ConversionResult]:
     """Converte múltiplos documentos em lote.
 
@@ -121,6 +140,9 @@ def convert_batch(
         mode: Modo de heurísticas.
         separate: Se True, separa peças.
         remove_headers_footers: Se True, remove cabeçalhos/rodapés.
+        extract_full_metadata: Se True, extrai metadados processuais.
+        separate_items: Se True, separa itens enumerados.
+        mark_internal_notes: Se True, demarca notas internas.
 
     Returns:
         Lista de ConversionResult.
@@ -136,6 +158,9 @@ def convert_batch(
             mode=mode,
             separate=separate,
             remove_headers_footers=remove_headers_footers,
+            extract_full_metadata=extract_full_metadata,
+            separate_items=separate_items,
+            mark_internal_notes=mark_internal_notes,
         )
         results.append(result)
 
