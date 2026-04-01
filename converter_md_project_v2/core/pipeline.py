@@ -9,9 +9,8 @@ from dataclasses import dataclass, field
 from .cleaning import clean_text
 from .extractors import extract_text
 from .legal_heuristics import apply_legal_heuristics, generate_toc
-from .metadata import extract_procedural_metadata
+from .metadata import extract_procedural_metadata, generate_frontmatter
 from .piece_separator import format_separated_pieces, separate_pieces
-from .metadata import generate_frontmatter
 
 logger = logging.getLogger(__name__)
 
