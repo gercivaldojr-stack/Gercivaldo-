@@ -79,9 +79,20 @@ ENUMERATION_PATTERNS = [
     r"^[a-z]\.\s+",        # a. texto, b. texto
     r"^[ivxlc]+\)\s+",     # i) texto, ii) texto
     r"^[IVXLC]+\)\s+",     # I) texto, II) texto
+    r"^[IVXLC]+\s*[-–—]\s+",  # I — texto, II – texto (alíneas romanas com travessão)
     r"^\d+\)\s+",           # 1) texto, 2) texto
-    r"^\d+\.\s+",           # 1. texto, 2. texto
+    r"^\d+\.\d+\.?\s+",    # 1.1 texto, 1.2. texto (subseções numéricas no modo forense)
 ]
+
+# Padrões de seções numeradas forense: \d+\.\s+MAIÚSCULAS → H2
+FORENSE_NUMBERED_H2_PATTERN = re.compile(
+    r"^(\d+)\.\s+([A-ZÁÉÍÓÚÀÂÊÔÃÕÇ][A-ZÁÉÍÓÚÀÂÊÔÃÕÇ\s]{2,})$"
+)
+
+# Padrões de subseções numeradas forense: \d+\.\d+ → H3
+FORENSE_NUMBERED_H3_PATTERN = re.compile(
+    r"^(\d+\.\d+\.?)\s+(.*)"
+)
 
 # ============================================================
 # Padrões de headings jurídicos — modo doutrina
@@ -198,8 +209,18 @@ def apply_legal_heuristics(text: str, mode: str = "forense") -> str:
 
 
 def _is_enumeration(line: str) -> bool:
-    """Verifica se a linha é um item de enumeração (a), b), 1., etc.)."""
-    return any(re.match(p, line) for p in ENUMERATION_PATTERNS)
+    """Verifica se a linha é um item de enumeração (a), b), 1., I —, 1.1, etc.).
+
+    NÃO considera enumeração se for seção numerada com título em MAIÚSCULAS
+    (ex: '1. DOS FATOS' → é heading, não enumeração).
+    """
+    for p in ENUMERATION_PATTERNS:
+        if re.match(p, line):
+            # Exceção: \d+\.\s+MAIÚSCULAS é seção numerada, não enumeração
+            if re.match(r"^\d+\.\s+[A-ZÁÉÍÓÚÀÂÊÔÃÕÇ][A-ZÁÉÍÓÚÀÂÊÔÃÕÇ\s]{2,}$", line.strip()):
+                return False
+            return True
+    return False
 
 
 def _apply_forense(line: str) -> str:
@@ -211,7 +232,7 @@ def _apply_forense(line: str) -> str:
         if re.match(pattern, upper_line, re.IGNORECASE):
             return f"# {line}"
 
-    # H2: endereçamento ao juiz
+    # H2: endereçamento ao juiz (EXCELENTÍSSIMO → H2)
     for pattern in FORENSE_ENDERECAMENTO_PATTERNS:
         if re.match(pattern, upper_line, re.IGNORECASE):
             return f"## {line}"
@@ -224,6 +245,14 @@ def _apply_forense(line: str) -> str:
     # Ignorar itens de enumeração — nunca viram heading
     if _is_enumeration(line):
         return line
+
+    # M5: Seções numeradas \d+\.\s+MAIÚSCULAS → H2
+    if FORENSE_NUMBERED_H2_PATTERN.match(line.strip()):
+        return f"## {line}"
+
+    # M5: Subseções numeradas \d+\.\d+ → H3 (somente linhas curtas)
+    if len(line) < 100 and FORENSE_NUMBERED_H3_PATTERN.match(line.strip()):
+        return f"### {line}"
 
     # H3: subseções Da/Do/Das/Dos (linhas curtas, < 100 chars)
     if len(line) < 100:

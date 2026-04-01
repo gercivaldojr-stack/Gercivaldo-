@@ -174,6 +174,83 @@ class TestDoutrinaMode:
         assert result.startswith("# ")
 
 
+class TestForenseEnumerationProtection:
+    """M3: Alíneas jurídicas NÃO viram headings ###."""
+
+    def test_alinea_a_not_heading(self):
+        text = "a) A concessão de tutela de urgência"
+        result = apply_legal_heuristics(text, mode="forense")
+        assert not result.strip().startswith("#")
+
+    def test_alinea_b_not_heading(self):
+        text = "b) Indenização por danos morais"
+        result = apply_legal_heuristics(text, mode="forense")
+        assert not result.strip().startswith("#")
+
+    def test_roman_dash_not_heading(self):
+        """I — texto NÃO deve virar heading."""
+        text = "I — os honorários advocatícios"
+        result = apply_legal_heuristics(text, mode="forense")
+        assert not result.strip().startswith("#")
+
+    def test_roman_ii_dash_not_heading(self):
+        text = "II — custas processuais"
+        result = apply_legal_heuristics(text, mode="forense")
+        assert not result.strip().startswith("#")
+
+    def test_subsection_1_1_not_heading_forense(self):
+        """1.1 texto NÃO deve virar heading no modo forense (é alínea)."""
+        text = "1.1 primeira subseção do pedido"
+        result = apply_legal_heuristics(text, mode="forense")
+        assert not result.strip().startswith("#")
+
+    def test_subsection_1_2_not_heading_forense(self):
+        text = "1.2 segunda subseção do pedido"
+        result = apply_legal_heuristics(text, mode="forense")
+        assert not result.strip().startswith("#")
+
+
+class TestForenseNumberedSections:
+    """M5: Seções numeradas no modo forense."""
+
+    def test_numbered_uppercase_section_is_h2(self):
+        """1. DOS FATOS → ## H2."""
+        text = "1. DOS FATOS"
+        result = apply_legal_heuristics(text, mode="forense")
+        assert result.strip().startswith("## ")
+
+    def test_numbered_uppercase_section_2(self):
+        text = "2. DO DIREITO"
+        result = apply_legal_heuristics(text, mode="forense")
+        assert result.strip().startswith("## ")
+
+    def test_numbered_uppercase_section_pedidos(self):
+        text = "3. DOS PEDIDOS"
+        result = apply_legal_heuristics(text, mode="forense")
+        assert result.strip().startswith("## ")
+
+    def test_numbered_lowercase_not_h2(self):
+        """1. texto minúsculo NÃO é seção numerada."""
+        text = "1. Introdução ao caso"
+        result = apply_legal_heuristics(text, mode="forense")
+        assert not result.strip().startswith("## ")
+
+    def test_excelentissimo_is_h2(self):
+        text = "EXCELENTÍSSIMO SENHOR DOUTOR JUIZ DE DIREITO"
+        result = apply_legal_heuristics(text, mode="forense")
+        assert result.strip().startswith("## ")
+        assert not result.strip().startswith("### ")
+
+    def test_no_h2_promoted_to_h1(self):
+        """H2 NÃO deve ser promovido a H1 mesmo sem H1 no documento."""
+        text = "DOS FATOS\n\nTexto.\n\nDOS PEDIDOS\n\nTexto."
+        result = apply_legal_heuristics(text, mode="forense")
+        lines = [l for l in result.split("\n") if l.strip().startswith("#")]
+        for line in lines:
+            assert line.strip().startswith("## ")
+            assert not line.strip().startswith("# ") or line.strip().startswith("## ")
+
+
 class TestRemoveSumario:
     def test_removes_sumario_section(self):
         text = (
