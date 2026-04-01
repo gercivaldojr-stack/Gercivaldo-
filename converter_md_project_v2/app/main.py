@@ -100,12 +100,28 @@ with st.sidebar:
     remove_hf = st.checkbox(
         "Remover cabeçalhos/rodapés repetidos",
         value=True,
-        help="Remove cabeçalhos e rodapés que se repetem entre páginas.",
+        help="Remove cabeçalhos e rodapés que se repetem entre páginas. "
+             "A primeira ocorrência é preservada (P10).",
+    )
+
+    detect_citations = st.checkbox(
+        "Detectar citações jurisprudenciais como blockquote",
+        value=True,
+        disabled=(mode != "forense"),
+        help="Detecta citações de julgados (No HC ..., No REsp ...) "
+             "e formata como blockquote Markdown. Apenas no modo forense.",
+    )
+
+    extract_metadata = st.checkbox(
+        "Extrair metadados da peça",
+        value=False,
+        help="Extrai campos adicionais no frontmatter: tipo_peca, paciente, "
+             "autoridade_coatora, pedido_liminar, etc.",
     )
 
     st.divider()
     st.caption("Formatos aceitos: PDF, DOCX, TXT, MD")
-    st.caption("Python 3.10+ | PyMuPDF | python-docx")
+    st.caption("v4.0 | Python 3.10+ | PyMuPDF | python-docx")
 
 # ============================================================
 # Upload de arquivos
@@ -137,6 +153,8 @@ if uploaded_files:
                 mode=mode,
                 separate=separate_pieces,
                 remove_headers_footers=remove_hf,
+                detect_citations=detect_citations and mode == "forense",
+                extract_metadata=extract_metadata,
             )
             results.append(result)
 

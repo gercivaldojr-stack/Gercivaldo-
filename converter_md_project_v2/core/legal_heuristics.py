@@ -165,12 +165,17 @@ def generate_toc(text: str) -> str:
     return "\n".join(toc_lines)
 
 
-def apply_legal_heuristics(text: str, mode: str = "forense") -> str:
+def apply_legal_heuristics(
+    text: str,
+    mode: str = "forense",
+    detect_citations: bool = True,
+) -> str:
     """Aplica heurísticas jurídicas ao texto para gerar headings Markdown.
 
     Args:
         text: Texto limpo.
         mode: 'forense' para peças processuais, 'doutrina' para livros/artigos.
+        detect_citations: Se True, detecta citações jurisprudenciais como blockquote (P7).
 
     Returns:
         Texto com headings Markdown aplicados.
@@ -204,7 +209,9 @@ def apply_legal_heuristics(text: str, mode: str = "forense") -> str:
         result.append(converted)
 
     structured = "\n".join(result)
-    structured = detect_blockquotes(structured)
+    # Citações jurisprudenciais apenas no modo forense (quando habilitado)
+    citations_enabled = detect_citations and mode == "forense"
+    structured = detect_blockquotes(structured, detect_citations=citations_enabled)
     return structured
 
 
@@ -359,14 +366,29 @@ _CITATION_ATTR_PATTERNS = [
 ]
 
 
-def detect_blockquotes(text: str) -> str:
+# P7: Padrão para citações jurisprudenciais inline
+# Detecta parágrafos começando com "No HC ...", "No AgRg no RHC ...", etc.
+_JURISPRUDENCE_CITATION_START = re.compile(
+    r"^No\s+(?:HC|RHC|AgRg\s+no\s+(?:RHC|AREsp|REsp)|REsp|ARE|AREsp|ADI|ADPF|RE|"
+    r"EREsp|PEDILEF|AgInt\s+no\s+(?:AREsp|REsp)|RMS|CC)\s+[\d./-]+",
+    re.IGNORECASE,
+)
+
+
+def detect_blockquotes(text: str, detect_citations: bool = True) -> str:
     """Detecta e formata blocos de citação jurídica como blockquotes Markdown.
 
-    Detecta dois tipos:
+    Detecta três tipos:
     1. Ementas: bloco iniciado por "EMENTA" até a próxima linha em branco dupla
        ou próximo heading.
     2. Citações longas com atribuição a tribunais: bloco entre aspas ou
        seguido de referência a tribunal (STF, STJ, TJ...).
+    3. Citações jurisprudenciais inline: parágrafos que começam com
+       "No HC/REsp/AgRg..." referenciando julgados específicos (P7).
+
+    Args:
+        text: Texto com headings aplicados.
+        detect_citations: Se True, detecta citações jurisprudenciais (tipo 3).
     """
     lines = text.split("\n")
     result = []
@@ -447,6 +469,30 @@ def detect_blockquotes(text: str) -> str:
                 # Não é citação jurídica, manter original
                 result.extend(quote_lines)
                 continue
+
+        # --- Tipo 3: Citação jurisprudencial inline (P7) ---
+        if detect_citations and _JURISPRUDENCE_CITATION_START.match(stripped):
+            citation_lines = [stripped]
+            i += 1
+            # Coletar linhas do mesmo parágrafo (sem linha em branco)
+            while i < len(lines):
+                s = lines[i].strip()
+                if not s or s.startswith("#"):
+                    break
+                # Se próxima linha é outra citação ou texto normal, parar
+                if _JURISPRUDENCE_CITATION_START.match(s):
+                    break
+                citation_lines.append(s)
+                i += 1
+
+            logger.debug(
+                "Detectada citação jurisprudencial: %s...",
+                citation_lines[0][:60],
+            )
+            for cl in citation_lines:
+                result.append(f"> {cl}")
+            result.append("")
+            continue
 
         result.append(line)
         i += 1

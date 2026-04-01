@@ -56,6 +56,7 @@ def clean_text(text: str, remove_headers_footers: bool = True) -> str:
     text = remove_residual_pagination(text)
     text = reconnect_cnj_numbers(text)
     text = rejoin_broken_paragraphs(text)
+    text = separate_enumerations(text)
     text = normalize_legal_citations(text)
     text = normalize_paragraphs(text)
 
@@ -148,11 +149,21 @@ def remove_ocr_noise(text: str) -> str:
     return text
 
 
-def remove_repeated_headers_footers(text: str) -> str:
+def remove_repeated_headers_footers(
+    text: str,
+    preserve_first: bool = True,
+) -> str:
     """Detecta e remove cabeçalhos e rodapés repetidos entre páginas.
 
     Heurística: linhas curtas que aparecem 3+ vezes com mesmo conteúdo
     são provavelmente cabeçalhos/rodapés.
+
+    P10: Se preserve_first=True, preserva a primeira ocorrência de cada
+    padrão repetido (pode ser conteúdo substantivo na página 1).
+
+    Args:
+        text: Texto com possíveis headers/footers repetidos.
+        preserve_first: Se True, mantém a primeira ocorrência de cada padrão.
     """
     lines = text.split("\n")
     if len(lines) < 20:
@@ -194,14 +205,50 @@ def remove_repeated_headers_footers(text: str) -> str:
 
     logger.info("Detectados %d padrões de cabeçalho/rodapé repetidos", len(filtered_repeated))
 
+    # P10: Rastrear primeira ocorrência de cada padrão
+    first_seen: set[str] = set()
     cleaned_lines = []
     for line in lines:
         stripped = line.strip()
         normalized = re.sub(r"\d+", "#", stripped.lower())
-        if normalized not in filtered_repeated:
+        if normalized in filtered_repeated:
+            if preserve_first and normalized not in first_seen:
+                # Preservar primeira ocorrência
+                first_seen.add(normalized)
+                cleaned_lines.append(line)
+                logger.debug("Preservada primeira ocorrência: %s", stripped[:50])
+            else:
+                # Remover repetições
+                continue
+        else:
             cleaned_lines.append(line)
 
     return "\n".join(cleaned_lines)
+
+
+def separate_enumerations(text: str) -> str:
+    """Garante que alíneas jurídicas (a), b), I —, etc.) sejam parágrafos separados (P9).
+
+    Insere linha em branco antes de cada alínea quando ela está colada
+    ao item anterior (sem linha em branco).
+    """
+    lines = text.split("\n")
+    result = []
+
+    enum_re = re.compile(
+        r"^([a-z]\)|[IVXLC]+\s*[-–—]\s|[ivxlc]+\)\s|\d+\.\d+\.?\s)"
+    )
+
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        # Se é alínea e a linha anterior não é vazia, inserir linha em branco
+        if enum_re.match(stripped) and i > 0:
+            prev = lines[i - 1].strip()
+            if prev:  # Linha anterior não é vazia
+                result.append("")
+        result.append(line)
+
+    return "\n".join(result)
 
 
 def normalize_paragraphs(text: str) -> str:

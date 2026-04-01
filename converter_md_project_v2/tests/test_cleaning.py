@@ -18,6 +18,7 @@ from core.cleaning import (
     remove_ocr_noise,
     remove_repeated_headers_footers,
     remove_residual_pagination,
+    separate_enumerations,
 )
 
 
@@ -79,8 +80,10 @@ class TestRemoveRepeatedHeadersFooters:
             lines.append("")
         text = "\n".join(lines)
         result = remove_repeated_headers_footers(text)
-        # O padrão "Tribunal de Justiça - Página #" deve ser removido
-        assert "Tribunal de Justiça" not in result
+        # P10: primeira ocorrência preservada por padrão
+        assert "Tribunal de Justiça - Página 1" in result
+        # Repetições removidas
+        assert "Tribunal de Justiça - Página 5" not in result
 
     def test_short_document_unchanged(self):
         text = "Linha 1\nLinha 2\nLinha 3"
@@ -470,6 +473,88 @@ class TestRemoveResidualPagination:
         text = "Texto.\npágina 5\nMais."
         result = remove_residual_pagination(text)
         assert "página 5" not in result
+
+
+class TestSeparateEnumerations:
+    """P9: Alíneas jurídicas devem ser parágrafos separados."""
+
+    def test_alinea_gets_blank_line_before(self):
+        text = "Requer-se:\na) primeiro pedido\nb) segundo pedido"
+        result = separate_enumerations(text)
+        assert "\n\na) primeiro pedido" in result
+        assert "\n\nb) segundo pedido" in result
+
+    def test_roman_gets_blank_line_before(self):
+        text = "Fundamentos:\nI — primeiro\nII — segundo"
+        result = separate_enumerations(text)
+        assert "\n\nI — primeiro" in result
+        assert "\n\nII — segundo" in result
+
+    def test_subsection_gets_blank_line(self):
+        text = "Seção principal\n1.1 subseção\n1.2 outra"
+        result = separate_enumerations(text)
+        assert "\n\n1.1 subseção" in result
+        assert "\n\n1.2 outra" in result
+
+    def test_already_separated_no_double(self):
+        """Se já tem linha em branco, não duplicar."""
+        text = "Requer-se:\n\na) primeiro pedido"
+        result = separate_enumerations(text)
+        assert "\n\n\na)" not in result
+
+    def test_normal_text_unchanged(self):
+        text = "O réu deve pagar indenização.\nPrazo de 30 dias."
+        assert separate_enumerations(text) == text
+
+
+class TestPreserveFirstHeaderFooter:
+    """P10: Primeira ocorrência de header/footer deve ser preservada."""
+
+    def test_first_occurrence_preserved(self):
+        lines = []
+        for i in range(10):
+            lines.append(f"Tribunal de Justiça - Página {i + 1}")
+            lines.append(f"Conteúdo do parágrafo {i + 1} com texto suficiente para não ser confundido.")
+            lines.append("")
+        text = "\n".join(lines)
+        result = remove_repeated_headers_footers(text, preserve_first=True)
+        # A primeira ocorrência deve existir
+        assert "Tribunal de Justiça - Página 1" in result
+        # As demais devem ser removidas
+        assert "Tribunal de Justiça - Página 2" not in result
+        assert "Tribunal de Justiça - Página 5" not in result
+
+    def test_all_removed_when_preserve_false(self):
+        lines = []
+        for i in range(10):
+            lines.append(f"Tribunal de Justiça - Página {i + 1}")
+            lines.append(f"Conteúdo do parágrafo {i + 1} com texto suficiente para não ser confundido.")
+            lines.append("")
+        text = "\n".join(lines)
+        result = remove_repeated_headers_footers(text, preserve_first=False)
+        assert "Tribunal de Justiça" not in result
+
+    def test_content_preserved(self):
+        lines = []
+        for i in range(10):
+            lines.append(f"Rodapé escritório - página {i + 1}")
+            lines.append(f"Conteúdo substancial do parágrafo {i + 1} com argumentação jurídica.")
+            lines.append("")
+        text = "\n".join(lines)
+        result = remove_repeated_headers_footers(text, preserve_first=True)
+        assert "Conteúdo substancial" in result
+
+    def test_default_preserves_first(self):
+        """O default do parâmetro é preserve_first=True."""
+        lines = []
+        for i in range(10):
+            lines.append(f"CEP 12345-678 escritório - pag {i + 1}")
+            lines.append(f"Conteúdo parágrafo {i + 1} com texto extenso suficiente para o teste.")
+            lines.append("")
+        text = "\n".join(lines)
+        result = remove_repeated_headers_footers(text)
+        # Primeira deve ser preservada (default)
+        assert "CEP 12345-678 escritório - pag 1" in result
 
 
 class TestCleanText:

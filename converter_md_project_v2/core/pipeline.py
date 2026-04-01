@@ -34,6 +34,8 @@ def convert_document(
     mode: str = "forense",
     separate: bool = False,
     remove_headers_footers: bool = True,
+    detect_citations: bool = True,
+    extract_metadata: bool = False,
 ) -> ConversionResult:
     """Converte um documento jurídico para Markdown estruturado.
 
@@ -44,6 +46,8 @@ def convert_document(
         mode: 'forense' ou 'doutrina'.
         separate: Se True, tenta separar peças processuais.
         remove_headers_footers: Se True, remove cabeçalhos/rodapés repetidos.
+        detect_citations: Se True, detecta citações jurisprudenciais como blockquote (P7).
+        extract_metadata: Se True, extrai metadados expandidos da peça (P8).
 
     Returns:
         ConversionResult com o Markdown e metadados.
@@ -70,10 +74,14 @@ def convert_document(
 
         # 3. Heurísticas jurídicas
         logger.info("Aplicando heurísticas jurídicas (modo: %s)...", mode)
-        structured = apply_legal_heuristics(cleaned, mode=mode)
+        structured = apply_legal_heuristics(
+            cleaned, mode=mode, detect_citations=detect_citations,
+        )
 
-        # 3b. Frontmatter YAML
-        frontmatter = generate_frontmatter(structured, filename=result.filename)
+        # 3b. Frontmatter YAML (com metadados expandidos P8)
+        frontmatter = generate_frontmatter(
+            structured, filename=result.filename, extract_metadata=extract_metadata,
+        )
 
         # 3c. Sumário automático (P6)
         toc = generate_toc(structured)
@@ -113,6 +121,8 @@ def convert_batch(
     mode: str = "forense",
     separate: bool = False,
     remove_headers_footers: bool = True,
+    detect_citations: bool = True,
+    extract_metadata: bool = False,
 ) -> list[ConversionResult]:
     """Converte múltiplos documentos em lote.
 
@@ -121,6 +131,8 @@ def convert_batch(
         mode: Modo de heurísticas.
         separate: Se True, separa peças.
         remove_headers_footers: Se True, remove cabeçalhos/rodapés.
+        detect_citations: Se True, detecta citações jurisprudenciais (P7).
+        extract_metadata: Se True, extrai metadados expandidos (P8).
 
     Returns:
         Lista de ConversionResult.
@@ -136,6 +148,8 @@ def convert_batch(
             mode=mode,
             separate=separate,
             remove_headers_footers=remove_headers_footers,
+            detect_citations=detect_citations,
+            extract_metadata=extract_metadata,
         )
         results.append(result)
 

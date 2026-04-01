@@ -251,6 +251,63 @@ class TestForenseNumberedSections:
             assert not line.strip().startswith("# ") or line.strip().startswith("## ")
 
 
+class TestJurisprudenceCitations:
+    """P7: Citações jurisprudenciais devem ser blockquote."""
+
+    def test_no_hc_citation(self):
+        text = (
+            "Texto argumentativo.\n\n"
+            "No HC 91.199/SP, Rel. Min. Cármen Lúcia, 1.ª Turma, j. 16/10/2007, "
+            "o STF assentou que o excesso de prazo deve ser avaliado.\n\n"
+            "Mais texto."
+        )
+        result = apply_legal_heuristics(text, mode="forense", detect_citations=True)
+        assert "> No HC 91.199/SP" in result
+        assert "Mais texto" in result
+        assert "> Mais texto" not in result
+
+    def test_no_agrg_citation(self):
+        text = (
+            "No AgRg no RHC 129.833/PB, Rel. Min. Laurita Vaz, 6.ª Turma, "
+            "o STJ reconheceu a mitigação da Súmula 52.\n\n"
+            "Texto normal."
+        )
+        result = apply_legal_heuristics(text, mode="forense", detect_citations=True)
+        assert "> No AgRg no RHC 129.833/PB" in result
+
+    def test_no_resp_citation(self):
+        text = "No REsp 1.234.567/SP, decidiu-se que..."
+        result = apply_legal_heuristics(text, mode="forense", detect_citations=True)
+        assert "> No REsp 1.234.567/SP" in result
+
+    def test_citation_disabled(self):
+        text = "No HC 91.199/SP, Rel. Min. Cármen Lúcia, decidiu-se."
+        result = apply_legal_heuristics(text, mode="forense", detect_citations=False)
+        assert "> No HC" not in result
+
+    def test_citation_only_in_forense(self):
+        text = "No HC 91.199/SP, o STF assentou sobre o excesso de prazo."
+        result = apply_legal_heuristics(text, mode="doutrina", detect_citations=True)
+        assert "> No HC" not in result
+
+    def test_normal_text_not_cited(self):
+        text = "O réu deve pagar indenização por danos morais."
+        result = apply_legal_heuristics(text, mode="forense", detect_citations=True)
+        assert "> " not in result
+
+    def test_multiline_citation(self):
+        text = (
+            "No HC 5043351-09.2023.8.09.0000, admitiu-se\n"
+            "a mitigação da Súmula em caso análogo.\n\n"
+            "Texto seguinte."
+        )
+        result = apply_legal_heuristics(text, mode="forense", detect_citations=True)
+        assert "> No HC 5043351" in result
+        assert "> a mitigação" in result
+        assert "Texto seguinte" in result
+        assert "> Texto seguinte" not in result
+
+
 class TestRemoveSumario:
     def test_removes_sumario_section(self):
         text = (
