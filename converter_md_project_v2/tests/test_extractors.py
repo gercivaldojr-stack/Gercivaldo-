@@ -200,3 +200,98 @@ class TestTableToMarkdown:
         assert "| Col1 | Col2 |" in result
         assert "| --- | --- |" in result
         assert "| A | B |" in result
+
+
+class TestDocxInlineFormatting:
+    """F1: Preservar formatação inline (bold/italic) na extração DOCX."""
+
+    def _make_docx_with_runs(self, runs_spec):
+        """Helper: cria DOCX com runs especificados.
+
+        runs_spec: lista de (text, bold, italic)
+        """
+        import io
+        from docx import Document
+
+        doc = Document()
+        para = doc.add_paragraph()
+        for text, bold, italic in runs_spec:
+            run = para.add_run(text)
+            run.bold = bold
+            run.italic = italic
+
+        buf = io.BytesIO()
+        doc.save(buf)
+        return buf.getvalue()
+
+    def test_bold_preserved(self):
+        docx_bytes = self._make_docx_with_runs([
+            ("Nome: ", False, False),
+            ("JOÃO DA SILVA", True, False),
+            (", brasileiro.", False, False),
+        ])
+        result = extract_text(file_bytes=docx_bytes, filename="test.docx",
+                              preserve_inline_formatting=True)
+        assert "**JOÃO DA SILVA**" in result
+
+    def test_italic_preserved(self):
+        docx_bytes = self._make_docx_with_runs([
+            ("Conforme ", False, False),
+            ("in dubio pro reo", False, True),
+            (".", False, False),
+        ])
+        result = extract_text(file_bytes=docx_bytes, filename="test.docx",
+                              preserve_inline_formatting=True)
+        assert "*in dubio pro reo*" in result
+
+    def test_bold_italic_preserved(self):
+        docx_bytes = self._make_docx_with_runs([
+            ("Texto ", False, False),
+            ("muito importante", True, True),
+            (".", False, False),
+        ])
+        result = extract_text(file_bytes=docx_bytes, filename="test.docx",
+                              preserve_inline_formatting=True)
+        assert "***muito importante***" in result
+
+    def test_formatting_disabled(self):
+        docx_bytes = self._make_docx_with_runs([
+            ("Nome: ", False, False),
+            ("JOÃO DA SILVA", True, False),
+        ])
+        result = extract_text(file_bytes=docx_bytes, filename="test.docx",
+                              preserve_inline_formatting=False)
+        assert "**" not in result
+        assert "JOÃO DA SILVA" in result
+
+    def test_heading_no_inline_formatting(self):
+        """Headings não devem ter bold/italic inline (redundante com #)."""
+        import io
+        from docx import Document
+
+        doc = Document()
+        heading = doc.add_heading("", level=1)
+        run = heading.add_run("Título Bold")
+        run.bold = True
+        doc.add_paragraph("Texto normal.")
+
+        buf = io.BytesIO()
+        doc.save(buf)
+
+        result = extract_text(file_bytes=buf.getvalue(), filename="test.docx",
+                              preserve_inline_formatting=True)
+        assert "# Título Bold" in result
+        assert "# **" not in result
+
+    def test_mixed_runs(self):
+        docx_bytes = self._make_docx_with_runs([
+            ("O réu ", False, False),
+            ("BANCO DO BRASIL S.A.", True, False),
+            (" deve pagar ", False, False),
+            ("indenização", False, True),
+            (".", False, False),
+        ])
+        result = extract_text(file_bytes=docx_bytes, filename="test.docx",
+                              preserve_inline_formatting=True)
+        assert "**BANCO DO BRASIL S.A.**" in result
+        assert "*indenização*" in result

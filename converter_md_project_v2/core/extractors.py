@@ -24,13 +24,19 @@ _FOOTER_PATTERNS = [
 ]
 
 
-def extract_text(file_path: str, file_bytes: bytes | None = None, filename: str | None = None) -> str:
+def extract_text(
+    file_path: str = None,
+    file_bytes: bytes | None = None,
+    filename: str | None = None,
+    preserve_inline_formatting: bool = True,
+) -> str:
     """Extrai texto de um arquivo com base na extensão.
 
     Args:
         file_path: Caminho do arquivo no disco (pode ser None se file_bytes for fornecido).
         file_bytes: Conteúdo do arquivo em bytes (para uso via Streamlit upload).
         filename: Nome original do arquivo (usado para detectar extensão quando file_bytes é fornecido).
+        preserve_inline_formatting: Se True, preserva bold/italic do DOCX como Markdown.
 
     Returns:
         Texto extraído como string.
@@ -55,11 +61,13 @@ def extract_text(file_path: str, file_bytes: bytes | None = None, filename: str 
 
     try:
         if file_bytes is not None:
-            return extractor(file_bytes=file_bytes, file_path=None)
+            return extractor(file_bytes=file_bytes, file_path=None,
+                             preserve_inline_formatting=preserve_inline_formatting)
         else:
             with open(file_path, "rb") as f:
                 raw = f.read()
-            return extractor(file_bytes=raw, file_path=file_path)
+            return extractor(file_bytes=raw, file_path=file_path,
+                             preserve_inline_formatting=preserve_inline_formatting)
     except Exception as e:
         logger.error("Erro ao extrair texto de %s: %s", filename or file_path, e)
         raise
@@ -178,7 +186,7 @@ def _table_to_markdown(table) -> str:
     return "\n".join(lines)
 
 
-def _extract_pdf(file_bytes: bytes, file_path: str | None = None) -> str:
+def _extract_pdf(file_bytes: bytes, file_path: str | None = None, **kwargs) -> str:
     """Extrai texto de PDF usando PyMuPDF (fitz), com:
     - Extração de tabelas via find_tables() com fallback para texto puro
     - Remoção de cabeçalhos/rodapés via análise de bbox
@@ -323,8 +331,47 @@ def _docx_table_to_markdown(table) -> str:
     return "\n".join(lines)
 
 
-def _extract_docx(file_bytes: bytes, file_path: str | None = None) -> str:
-    """Extrai texto de DOCX preservando estrutura de parágrafos e tabelas."""
+def _paragraph_to_markdown(paragraph, preserve_formatting: bool = True) -> str:
+    """Converte um parágrafo DOCX para Markdown preservando bold/italic.
+
+    Itera sobre runs do parágrafo e envolve trechos em **...** ou *...*.
+    """
+    if not preserve_formatting:
+        return paragraph.text.strip()
+
+    parts = []
+    for run in paragraph.runs:
+        text = run.text
+        if not text:
+            continue
+        bold = run.bold
+        italic = run.italic
+        if bold and italic:
+            parts.append(f"***{text}***")
+        elif bold:
+            parts.append(f"**{text}**")
+        elif italic:
+            parts.append(f"*{text}*")
+        else:
+            parts.append(text)
+
+    result = "".join(parts).strip()
+    # Limpar marcadores vazios: ****, **** etc.
+    result = re.sub(r"\*{2,3}\s*\*{2,3}", "", result)
+    # Mesclar marcadores adjacentes: **texto****outro** → **textooutro**
+    result = re.sub(r"\*\*\*\*\*\*", "", result)  # ****** vazio
+    result = re.sub(r"\*\*\*\*", "", result)        # **** entre bolds adjacentes
+    result = re.sub(r"\*\*\s+\*\*", " ", result)   # ** ** espaço entre bolds
+    return result
+
+
+def _extract_docx(
+    file_bytes: bytes,
+    file_path: str | None = None,
+    preserve_inline_formatting: bool = True,
+    **kwargs,
+) -> str:
+    """Extrai texto de DOCX preservando estrutura de parágrafos, tabelas e formatação inline."""
     import io
 
     from docx import Document
@@ -336,22 +383,28 @@ def _extract_docx(file_bytes: bytes, file_path: str | None = None) -> str:
 
     for block in _iter_block_items(doc):
         if isinstance(block, Paragraph):
-            text = block.text.strip()
+            text = _paragraph_to_markdown(block, preserve_inline_formatting)
             if not text:
                 continue
 
             style_name = (block.style.name or "").lower() if block.style else ""
 
             if "heading 1" in style_name:
-                parts.append(f"# {text}")
+                # Strip inline formatting from headings (redundant with #)
+                plain = block.text.strip()
+                parts.append(f"# {plain}")
             elif "heading 2" in style_name:
-                parts.append(f"## {text}")
+                plain = block.text.strip()
+                parts.append(f"## {plain}")
             elif "heading 3" in style_name:
-                parts.append(f"### {text}")
+                plain = block.text.strip()
+                parts.append(f"### {plain}")
             elif "heading 4" in style_name:
-                parts.append(f"#### {text}")
+                plain = block.text.strip()
+                parts.append(f"#### {plain}")
             elif "title" in style_name:
-                parts.append(f"# {text}")
+                plain = block.text.strip()
+                parts.append(f"# {plain}")
             else:
                 parts.append(text)
 
@@ -365,7 +418,7 @@ def _extract_docx(file_bytes: bytes, file_path: str | None = None) -> str:
     return "\n".join(parts)
 
 
-def _extract_txt(file_bytes: bytes, file_path: str | None = None) -> str:
+def _extract_txt(file_bytes: bytes, file_path: str | None = None, **kwargs) -> str:
     """Extrai texto de arquivo TXT detectando encoding automaticamente."""
     detected = chardet.detect(file_bytes)
     encoding = detected.get("encoding", "utf-8") or "utf-8"
@@ -377,6 +430,6 @@ def _extract_txt(file_bytes: bytes, file_path: str | None = None) -> str:
         return file_bytes.decode("utf-8", errors="replace")
 
 
-def _extract_md(file_bytes: bytes, file_path: str | None = None) -> str:
+def _extract_md(file_bytes: bytes, file_path: str | None = None, **kwargs) -> str:
     """Retorna conteúdo Markdown como está (já é o formato alvo)."""
     return _extract_txt(file_bytes, file_path)

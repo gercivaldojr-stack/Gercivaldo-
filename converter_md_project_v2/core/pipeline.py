@@ -115,6 +115,7 @@ def convert_document(
     extract_procedural: bool = False,
     separate_enums: bool = False,
     wrap_notes: bool = False,
+    preserve_inline_formatting: bool = True,
 ) -> ConversionResult:
     """Converte um documento jurídico para Markdown estruturado.
 
@@ -139,7 +140,10 @@ def convert_document(
     try:
         # 1. Extração
         logger.info("Extraindo texto de: %s", result.filename)
-        raw_text = extract_text(file_path=file_path, file_bytes=file_bytes, filename=filename)
+        raw_text = extract_text(
+            file_path=file_path, file_bytes=file_bytes, filename=filename,
+            preserve_inline_formatting=preserve_inline_formatting,
+        )
 
         if not raw_text.strip():
             result.error = "Documento vazio ou sem texto extraível."
@@ -226,6 +230,7 @@ def convert_batch(
     extract_procedural: bool = False,
     separate_enums: bool = False,
     wrap_notes: bool = False,
+    preserve_inline_formatting: bool = True,
 ) -> list[ConversionResult]:
     """Converte múltiplos documentos em lote.
 
@@ -259,6 +264,7 @@ def convert_batch(
             extract_procedural=extract_procedural,
             separate_enums=separate_enums,
             wrap_notes=wrap_notes,
+            preserve_inline_formatting=preserve_inline_formatting,
         )
         results.append(result)
 
