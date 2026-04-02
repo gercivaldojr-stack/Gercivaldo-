@@ -84,9 +84,9 @@ ENUMERATION_PATTERNS = [
     r"^\d+\.\d+\.?\s+",    # 1.1 texto, 1.2. texto (subseções numéricas no modo forense)
 ]
 
-# Padrões de seções numeradas forense: \d+\.\s+MAIÚSCULAS → H2
+# Padrões de seções numeradas forense: \d+\.\s+TÍTULO (aceita Art., nº, preposições) → H2
 FORENSE_NUMBERED_H2_PATTERN = re.compile(
-    r"^(\d+)\.\s+([A-ZÁÉÍÓÚÀÂÊÔÃÕÇ][A-ZÁÉÍÓÚÀÂÊÔÃÕÇ\s,§°º().\-:\d]{2,})$"
+    r"^(\d+)\.\s+([A-ZÁÉÍÓÚÀÂÊÔÃÕÇ][A-ZÁÉÍÓÚÀÂÊÔÃÕÇa-záéíóúàâêôãõç\s,§°º().\-:/\d]{2,})$"
 )
 
 # Padrões de subseções numeradas forense: \d+\.\d+ → H3
@@ -271,7 +271,7 @@ def _is_enumeration(line: str) -> bool:
     for p in ENUMERATION_PATTERNS:
         if re.match(p, line):
             # Exceção: \d+\.\s+MAIÚSCULAS é seção numerada, não enumeração
-            if re.match(r"^\d+\.\s+[A-ZÁÉÍÓÚÀÂÊÔÃÕÇ][A-ZÁÉÍÓÚÀÂÊÔÃÕÇ\s,§°º().\-:\d]{2,}$", line.strip()):
+            if re.match(r"^\d+\.\s+[A-ZÁÉÍÓÚÀÂÊÔÃÕÇ][A-ZÁÉÍÓÚÀÂÊÔÃÕÇa-záéíóúàâêôãõç\s,§°º().\-:/\d]{2,}$", line.strip()):
                 return False
             return True
     return False

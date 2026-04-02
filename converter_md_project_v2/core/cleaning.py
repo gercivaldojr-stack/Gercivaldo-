@@ -110,12 +110,12 @@ def reconstruct_pdf_headings(text: str) -> str:
 
     # Padrão: linha começando com número + ponto + texto majoritariamente MAIÚSCULAS
     numbered_heading_re = re.compile(
-        r"^(\d+)\.\s+([A-ZÁÉÍÓÚÀÂÊÔÃÕÇ][A-ZÁÉÍÓÚÀÂÊÔÃÕÇ\s,§°º().\-:]+)$"
+        r"^(\d+)\.\s+([A-ZÁÉÍÓÚÀÂÊÔÃÕÇ][A-ZÁÉÍÓÚÀÂÊÔÃÕÇa-záéíóúàâêôãõç\s,§°º().\-:/\d]+)$"
     )
 
     # Padrão: linha toda em MAIÚSCULAS (possível continuação de heading)
     uppercase_line_re = re.compile(
-        r"^[A-ZÁÉÍÓÚÀÂÊÔÃÕÇ][A-ZÁÉÍÓÚÀÂÊÔÃÕÇ\s,§°º().\-:]*$"
+        r"^[A-ZÁÉÍÓÚÀÂÊÔÃÕÇ][A-ZÁÉÍÓÚÀÂÊÔÃÕÇa-záéíóúàâêôãõç\s,§°º().\-:/\d]*$"
     )
 
     # Preposições/conjunções que indicam heading incompleto no final da linha
