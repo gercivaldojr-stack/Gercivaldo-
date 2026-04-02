@@ -259,6 +259,9 @@ def apply_legal_heuristics(
     if mode in ("forense", "google"):
         structured = format_signatures(structured)
 
+    # F5: Preencher gaps de numeração (seções sem título detectado)
+    if mode == "forense":
+        structured = fill_heading_gaps(structured)
     return structured
 
 
@@ -275,6 +278,77 @@ def _is_enumeration(line: str) -> bool:
                 return False
             return True
     return False
+
+
+
+
+def fill_heading_gaps(md: str) -> str:
+    """Detecta gaps na numeração de seções ## N. e insere placeholders.
+
+    Exemplo: se existem ## 3. e ## 5., infere que ## 4. está faltando
+    e insere ``## 4. [SEÇÃO SEM TÍTULO DETECTADO]`` no melhor ponto.
+    """
+    lines_list = md.split("\n")
+    heading_re = re.compile(r"^##\s+(\d+)\.")
+
+    # Coletar números de seção existentes e suas posições
+    found = []
+    for idx, ln in enumerate(lines_list):
+        m = heading_re.match(ln)
+        if m:
+            found.append((int(m.group(1)), idx))
+
+    if len(found) < 2:
+        return md
+
+    first_num = found[0][0]
+    last_num = found[-1][0]
+    existing_nums = {n for n, _ in found}
+    missing = sorted(set(range(first_num, last_num + 1)) - existing_nums)
+
+    if not missing:
+        return md
+
+    logger.info("fill_heading_gaps: seções faltantes detectadas: %s", missing)
+
+    # Para cada número faltante, encontrar posição de inserção
+    # Estratégia: inserir logo antes da próxima seção existente
+    found_dict = {n: pos for n, pos in found}
+    insertions = []  # (line_index, heading_text)
+
+    for num in missing:
+        # Achar a próxima seção existente (com número > num)
+        next_nums = sorted(n for n in existing_nums if n > num)
+        if not next_nums:
+            continue
+        next_num = next_nums[0]
+        next_pos = found_dict[next_num]
+
+        # Tentar achar âncora de subseção (ex: "3.4." como última sub de seção 3)
+        prev_num = num - 1
+        sub_re = re.compile(r"^\*\*" + str(prev_num) + r"\.(\d+)\.?\*\*|^" + str(prev_num) + r"\.(\d+)\.")
+        best_pos = next_pos  # default: logo antes da próxima seção
+
+        # Procurar entre a seção anterior e a próxima
+        prev_pos = found_dict.get(prev_num, 0)
+        for scan in range(prev_pos, next_pos):
+            if sub_re.match(lines_list[scan].strip()):
+                best_pos = scan + 1  # depois da última subseção encontrada
+
+        # Se best_pos ficou no meio de um parágrafo, avançar até linha vazia
+        while best_pos < next_pos and lines_list[best_pos].strip():
+            best_pos += 1
+
+        heading = "## " + str(num) + ". [SEÇÃO SEM TÍTULO DETECTADO]"
+        insertions.append((best_pos, heading))
+
+    # Inserir de trás para frente para não deslocar índices
+    for pos, heading in sorted(insertions, reverse=True):
+        lines_list.insert(pos, "")
+        lines_list.insert(pos + 1, heading)
+        lines_list.insert(pos + 2, "")
+
+    return "\n".join(lines_list)
 
 
 def _apply_forense(line: str) -> str:
