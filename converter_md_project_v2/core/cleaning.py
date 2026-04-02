@@ -104,6 +104,9 @@ def reconstruct_pdf_headings(text: str) -> str:
 
     Também trata headings nomeados em MAIÚSCULAS sem número que foram quebrados.
     """
+    # Normalizar caracteres especiais (NBSP, degree sign, zero-width space)
+    text = text.replace('\xa0', ' ').replace('\u200b', '')
+
     lines = text.split("\n")
     if len(lines) < 2:
         return text
