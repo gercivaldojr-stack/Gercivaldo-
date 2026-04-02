@@ -296,6 +296,9 @@ def fill_heading_gaps(md: str) -> str:
     Se existem ## 3. e ## 5., infere que ## 4. está faltando e insere
     ``## 4. [SEÇÃO SEM TÍTULO DETECTADO]`` no melhor ponto.
     """
+    # ── Normalizar caracteres especiais (NBSP, degree sign, etc.) ──
+    md = md.replace('\xa0', ' ').replace('\u200b', '')
+
     lines_list = md.split("\n")
 
     # ── Pass 1: promover linhas cruas N. TÍTULO → ## N. TÍTULO ──
@@ -304,10 +307,15 @@ def fill_heading_gaps(md: str) -> str:
         r"[A-ZÁÉÍÓÚÀÂÊÔÃÕÇa-záéíóúàâêôãõç\s,§°º()\.\-:/\d]{2,})$"
     )
     trailing_connector = re.compile(
-        r"\b(?:DE|DA|DO|DOS|DAS|E|OU)\s*$"
+        r"\b(?:DE|DA|DO|DOS|DAS|E|OU|A|AO|AOS|À|ÀS|NA|NO|NAS|NOS|EM|COM|PARA|POR|ANTE|PERANTE|SOB|SOBRE|ENTRE)\s*$"
     )
     uppercase_cont = re.compile(
         r"^[A-ZÁÉÍÓÚÀÂÊÔÃÕÇ][A-ZÁÉÍÓÚÀÂÊÔÃÕÇa-záéíóúàâêôãõç\s,§°º()\.\-:/\d]{2,}$"
+    )
+
+    # Fallback: regex mais tolerante para headings com chars especiais do PDF
+    fallback_heading_re = re.compile(
+        r"^(\d+)\.\s+([A-ZÁÉÍÓÚÀÂÊÔÃÕÇ].{2,})$"
     )
 
     i = 0
@@ -320,6 +328,15 @@ def fill_heading_gaps(md: str) -> str:
             continue
 
         m = raw_heading_re.match(stripped)
+        # Fallback: se o regex estrito falha, tentar o tolerante
+        # (aceita chars especiais do PDF como degree sign, etc.)
+        if not m:
+            fm = fallback_heading_re.match(stripped)
+            if fm:
+                upper_count = sum(1 for ch in stripped if ch.isupper())
+                alpha_count = sum(1 for ch in stripped if ch.isalpha())
+                if alpha_count > 0 and upper_count / alpha_count > 0.5:
+                    m = fm
         if m:
             # Verificar se termina com conector e a próxima é continuação
             if trailing_connector.search(stripped) and i + 1 < len(lines_list):
@@ -370,7 +387,7 @@ def fill_heading_gaps(md: str) -> str:
 
         prev_num = num - 1
         sub_re = re.compile(
-            r"^\*\*" + str(prev_num) + r"\.(\d+)\.?\*\*|^"
+            r"^(?:###?\s+)?\*\*" + str(prev_num) + r"\.(\d+)\.?\*\*|^(?:###?\s+)?"
             + str(prev_num) + r"\.(\d+)\."
         )
         best_pos = next_pos
