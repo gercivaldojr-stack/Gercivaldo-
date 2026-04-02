@@ -90,7 +90,7 @@ FORENSE_NUMBERED_H2_PATTERN = re.compile(
 )
 
 # Padrões de subseções numeradas forense: \d+\.\d+ → H3
-FORENSE_NUMBERED_H3_PATTERN = rhe.compile(
+FORENSE_NUMBERED_H3_PATTERN = re.compile(
     r"^(\d+\.\d+\.?)\s+(.*)"
 )
 
@@ -283,23 +283,70 @@ def _is_enumeration(line: str) -> bool:
 
 
 def fill_heading_gaps(md: str) -> str:
-    """Detecta gaps na numeração de seções ## N. e insere placeholders.
+    """Promove headings crus e preenche lacunas na numeração ## N.
 
-    Exemplo: se existem ## 3. e ## 5., infere que ## 4. está faltando
-    e insere ``## 4. [SEÇÃO SEM TÍTULO DETECTADO]`` no melhor ponto.
+    **Pass 1 – Promoção de headings crus:**
+    Linhas que casam com FORENSE_NUMBERED_H2_PATTERN mas ainda não
+    possuem prefixo '## ' são promovidas.  Se a linha termina com um
+    conector (DE, DA, DO, DOS, DAS, E, OU) e a próxima linha é
+    predominantemente MAIÚSCULA, as duas linhas são unidas antes da
+    promoção (corrige headings que o PDF quebrou em duas linhas).
+
+    **Pass 2 – Detecção de lacunas:**
+    Se existem ## 3. e ## 5., infere que ## 4. está faltando e insere
+    ``## 4. [SEÇÃO SEM TÍTULO DETECTADO]`` no melhor ponto.
     """
     lines_list = md.split("\n")
+
+    # ── Pass 1: promover linhas cruas N. TÍTULO → ## N. TÍTULO ──
+    raw_heading_re = re.compile(
+        r"^(\d+)\.\s+([A-ZÁÉÍÓÚÀÂÊÔÃÕÇ]"
+        r"[A-ZÁÉÍÓÚÀÂÊÔÃÕÇa-záéíóúàâêôãõç\s,§°º()\.\-:/\d]{2,})$"
+    )
+    trailing_connector = re.compile(
+        r"\b(?:DE|DA|DO|DOS|DAS|E|OU)\s*$"
+    )
+    uppercase_cont = re.compile(
+        r"^[A-ZÁÉÍÓÚÀÂÊÔÃÕÇ][A-ZÁÉÍÓÚÀÂÊÔÃÕÇa-záéíóúàâêôãõç\s,§°º()\.\-:/\d]{2,}$"
+    )
+
+    i = 0
+    while i < len(lines_list):
+        stripped = lines_list[i].strip()
+
+        # Ignorar linhas já formatadas como heading
+        if stripped.startswith("#"):
+            i += 1
+            continue
+
+        m = raw_heading_re.match(stripped)
+        if m:
+            # Verificar se termina com conector e a próxima é continuação
+            if trailing_connector.search(stripped) and i + 1 < len(lines_list):
+                next_stripped = lines_list[i + 1].strip()
+                if uppercase_cont.match(next_stripped):
+                    merged = stripped + " " + next_stripped
+                    lines_list[i] = "## " + merged
+                    lines_list.pop(i + 1)
+                    logger.info("fill_heading_gaps pass1: merged+promoted -> %s", merged[:80])
+                    i += 1
+                    continue
+
+            lines_list[i] = "## " + stripped
+            logger.info("fill_heading_gaps pass1: promoted -> %s", stripped[:80])
+        i += 1
+
+    # ── Pass 2: detectar gaps na numeração ## N. ──
     heading_re = re.compile(r"^##\s+(\d+)\.")
 
-    # Coletar números de seção existentes e suas posições
     found = []
     for idx, ln in enumerate(lines_list):
-        m = heading_re.match(ln)
-        if m:
-            found.append((int(m.group(1)), idx))
+        hm = heading_re.match(ln)
+        if hm:
+            found.append((int(hm.group(1)), idx))
 
     if len(found) < 2:
-        return md
+        return "\n".join(lines_list)
 
     first_num = found[0][0]
     last_num = found[-1][0]
@@ -307,49 +354,44 @@ def fill_heading_gaps(md: str) -> str:
     missing = sorted(set(range(first_num, last_num + 1)) - existing_nums)
 
     if not missing:
-        return md
+        return "\n".join(lines_list)
 
-    logger.info("fill_heading_gaps: seções faltantes detectadas: %s", missing)
+    logger.info("fill_heading_gaps pass2: seções faltantes detectadas: %s", missing)
 
-    # Para cada número faltante, encontrar posição de inserção
-    # Estratégia: inserir logo antes da próxima seção existente
     found_dict = {n: pos for n, pos in found}
-    insertions = []  # (line_index, heading_text)
+    insertions = []
 
     for num in missing:
-        # Achar a próxima seção existente (com número > num)
         next_nums = sorted(n for n in existing_nums if n > num)
         if not next_nums:
             continue
         next_num = next_nums[0]
         next_pos = found_dict[next_num]
 
-        # Tentar achar âncora de subseção (ex: "3.4." como última sub de seção 3)
         prev_num = num - 1
-        sub_re = re.compile(r"^\*\*" + str(prev_num) + r"\.(\d+)\.?\*\*|^" + str(prev_num) + r"\.(\d+)\.")
-        best_pos = next_pos  # default: logo antes da próxima seção
+        sub_re = re.compile(
+            r"^\*\*" + str(prev_num) + r"\.(\d+)\.?\*\*|^"
+            + str(prev_num) + r"\.(\d+)\."
+        )
+        best_pos = next_pos
 
-        # Procurar entre a seção anterior e a próxima
         prev_pos = found_dict.get(prev_num, 0)
         for scan in range(prev_pos, next_pos):
             if sub_re.match(lines_list[scan].strip()):
-                best_pos = scan + 1  # depois da última subseção encontrada
+                best_pos = scan + 1
 
-        # Se best_pos ficou no meio de um parágrafo, avançar até linha vazia
         while best_pos < next_pos and lines_list[best_pos].strip():
             best_pos += 1
 
         heading = "## " + str(num) + ". [SEÇÃO SEM TÍTULO DETECTADO]"
         insertions.append((best_pos, heading))
 
-    # Inserir de trás para frente para não deslocar índices
     for pos, heading in sorted(insertions, reverse=True):
         lines_list.insert(pos, "")
         lines_list.insert(pos + 1, heading)
         lines_list.insert(pos + 2, "")
 
     return "\n".join(lines_list)
-
 
 def _apply_forense(line: str) -> str:
     """Aplica padrões forenses a uma linha."""
