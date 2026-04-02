@@ -71,6 +71,9 @@ def clean_text(text: str, remove_headers_footers: bool = True) -> str:
     if not text or not text.strip():
         return ""
 
+    # Normalizar Unicode NFC (chars decompostos de DOCX)
+    text = unicodedata.normalize("NFC", text)
+
     text = fix_hyphenation(text)
     text = normalize_whitespace(text)
     text = remove_corrupted_glyphs(text)
@@ -104,6 +107,9 @@ def reconstruct_pdf_headings(text: str) -> str:
 
     Também trata headings nomeados em MAIÚSCULAS sem número que foram quebrados.
     """
+    # Normalizar Unicode NFC
+    text = unicodedata.normalize("NFC", text)
+
     # Normalizar caracteres especiais (NBSP, degree sign, zero-width space)
     text = text.replace('\xa0', ' ').replace('\u200b', '')
 
@@ -442,6 +448,7 @@ def _ends_with_preposition(line: str) -> bool:
 
 def rejoin_broken_paragraphs(text: str) -> str:
     """Junta linhas quebradas por extração de PDF em parágrafos contínuos."""
+    text = unicodedata.normalize("NFC", text)
     lines = text.split("\n")
     result = []
     buffer = ""
