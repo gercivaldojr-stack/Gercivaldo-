@@ -5,6 +5,7 @@ Dois modos: forense (peças processuais) e doutrina (livros/artigos).
 
 import logging
 import re
+import unicodedata
 
 logger = logging.getLogger(__name__)
 
@@ -202,6 +203,9 @@ def apply_legal_heuristics(
     if not text or not text.strip():
         return ""
 
+    # Normalizar Unicode para NFC (resolve decomposed chars de DOCX/PDF)
+    text = unicodedata.normalize("NFC", text)
+
     if mode == "doutrina":
         text = remove_sumario(text)
 
@@ -297,6 +301,7 @@ def fill_heading_gaps(md: str) -> str:
     ``## 4. [SEÇÃO SEM TÍTULO DETECTADO]`` no melhor ponto.
     """
     # ── Normalizar caracteres especiais (NBSP, degree sign, etc.) ──
+    md = unicodedata.normalize('NFC', md)
     md = md.replace('\xa0', ' ').replace('\u200b', '')
 
     lines_list = md.split("\n")
