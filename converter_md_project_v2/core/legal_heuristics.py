@@ -127,6 +127,44 @@ def _is_roman_heading(line):
     return True
 
 
+def _is_numbered_heading(line):
+    """Verifica se a linha é heading numerado (1. DOS FATOS, 2. DO DIREITO, etc.).
+    Usa análise explícita de caracteres para evitar problemas de regex.
+    """
+    s = line.strip()
+    if not s or len(s) < 5:
+        return False
+    # Deve começar com dígitos
+    i = 0
+    while i < len(s) and s[i].isdigit():
+        i += 1
+    if i == 0:
+        return False
+    # Deve ter ponto após o número
+    if i >= len(s) or s[i] != '.':
+        return False
+    i += 1
+    # Pular espaços
+    while i < len(s) and s[i] == ' ':
+        i += 1
+    if i >= len(s):
+        return False
+    # Primeiro char após "N. " deve ser maiúsculo
+    if not s[i].isupper():
+        return False
+    # Texto restante deve ser predominantemente maiúsculo
+    rest = s[i:]
+    if len(rest) < 2:
+        return False
+    upper_count = sum(1 for c in rest if c.isupper())
+    alpha_count = sum(1 for c in rest if c.isalpha())
+    if alpha_count == 0:
+        return False
+    if upper_count / alpha_count < 0.6:
+        return False
+    return True
+
+
 FORENSE_ROMAN_H2_PATTERN = re.compile(
     r"^([IVXLC]+)\s*[\-\u2013\u2014.]\s+([A-ZÁÉÍÓÚÀÂÊÔÃÕÇ][A-ZÁÉÍÓÚÀÂÊÔÃÕÇa-záéíóúàâêôãõç\s,§°º().\-:/\d]{2,})$"
 )
@@ -533,6 +571,12 @@ def _apply_forense(line: str) -> str:
             clean = clean[2:-2].strip()
         logger.info("ROMAN_H2_FORENSE: matched '%s'", clean[:60])
         return f"## {clean}"
+
+    # M5-FIX: Seções numeradas (1. DOS FATOS, 2. DO DIREITO, etc.) → H2
+    # Check explícito ANTES de H1/H2 patterns para evitar bypass por regex
+    if _is_numbered_heading(line):
+        logger.info("NUMBERED_H2_FORENSE: matched '%s'", line.strip()[:60])
+        return f"## {line}"
 
     # H1: títulos de peças processuais
     for pattern in FORENSE_H1_PATTERNS:
@@ -950,6 +994,9 @@ def detect_blockquotes(text: str, detect_citations: bool = True) -> str:
                     break
                 # Se próxima linha é outra citação ou texto normal, parar
                 if _JURISPRUDENCE_CITATION_START.match(s):
+                    break
+                # Parar se a linha é heading numerado ou romano
+                if _is_numbered_heading(s) or _is_roman_heading(s):
                     break
                 citation_lines.append(s)
                 i += 1
