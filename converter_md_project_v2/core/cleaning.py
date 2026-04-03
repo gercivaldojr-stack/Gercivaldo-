@@ -147,8 +147,44 @@ def reconstruct_pdf_headings(text: str) -> str:
         line = lines[i]
         stripped = line.strip()
 
-        # Pular linhas vazias ou curtas
-        if not stripped or len(stripped) < 3:
+        # Pular linhas vazias
+        if not stripped:
+            result.append(line)
+            i += 1
+            continue
+
+        # Caso 0: Heading extremamente fragmentado pelo PDF
+        # Ex: "5." sozinho na linha, seguido de "DA", "CONDUTA", "DOS", ... em linhas separadas
+        if re.match(r"^\d+\.$", stripped):
+            merged = stripped
+            j = i + 1
+            while j < len(lines):
+                next_s = lines[j].strip()
+                if not next_s:
+                    break
+                if len(next_s) > 60:
+                    break
+                if next_s[0].islower():
+                    break
+                if re.match(r"^\d+\.", next_s) and next_s != stripped:
+                    break
+                if next_s.isupper() or (len(next_s) < 40 and sum(1 for c in next_s if c.isupper()) > sum(1 for c in next_s if c.islower())):
+                    merged = merged + " " + next_s
+                    j += 1
+                else:
+                    break
+            if j > i + 1 and len(merged) > 10:
+                logger.info("reconstruct_pdf_headings caso0: joined fragmented heading '%s'", merged[:80])
+                result.append(merged)
+                i = j
+                continue
+            # Se n\u00e3o juntou nada significativo, manter original
+            result.append(line)
+            i += 1
+            continue
+
+        # Pular linhas muito curtas (< 3 chars) que n\u00e3o s\u00e3o "N."
+        if len(stripped) < 3:
             result.append(line)
             i += 1
             continue
