@@ -36,12 +36,12 @@ FORENSE_ENDERECAMENTO_PATTERNS = [
 ]
 
 FORENSE_H2_PATTERNS = [
-    r"^(I+\s*[-–—.]\s*DOS?\s+FATOS?.*)",
-    r"^(I+\s*[-–—.]\s*DO\s+DIREITO.*)",
-    r"^(I+\s*[-–—.]\s*D[AO]S?\s+FUNDAMENT.*)",
-    r"^(I+\s*[-–—.]\s*D[AO]S?\s+PEDIDO.*)",
-    r"^(I+\s*[-–—.]\s*D[AO]\s+MÉRITO.*)",
-    r"^(I+\s*[-–—.]\s*PRELIMINAR.*)",
+    r"^([IVXLC]+\s*[-–—.]\s*DOS?\s+FATOS?.*)",
+    r"^([IVXLC]+\s*[-–—.]\s*DO\s+DIREITO.*)",
+    r"^([IVXLC]+\s*[-–—.]\s*D[AO]S?\s+FUNDAMENT.*)",
+    r"^([IVXLC]+\s*[-–—.]\s*D[AO]S?\s+PEDIDO.*)",
+    r"^([IVXLC]+\s*[-–—.]\s*D[AO]\s+MÉRITO.*)",
+    r"^([IVXLC]+\s*[-–—.]\s*PRELIMINAR.*)",
     r"^(DOS?\s+FATOS?)\s*$",
     r"^(DO\s+DIREITO)\s*$",
     r"^(D[AO]S?\s+FUNDAMENT\w*)\s*$",
@@ -57,6 +57,8 @@ FORENSE_H2_PATTERNS = [
     r"^(D[AO]S?\s+PROVAS?)\s*$",
     r"^(D[AO]\s+TUTELA\s+.*)",
     r"^(CLÁUSULA\s+\w+.*)",
+    # Genérico: numeração romana + travessão/ponto + título em MAIÚSCULAS
+    r"^([IVXLC]+\s*[-–—.]\s+[A-ZÁÉÍÓÚÀÂÊÔÃÕÇ][A-ZÁÉÍÓÚÀÂÊÔÃÕÇa-záéíóúàâêôãõç\s,§°º().\-:/\d]{2,})",
 ]
 
 # FIX: Art. removido de FORENSE_H3_PATTERNS.
@@ -280,6 +282,9 @@ def _is_enumeration(line: str) -> bool:
             # Exceção: \d+\.\s+MAIÚSCULAS é seção numerada, não enumeração
             if re.match(r"^\d+\.\s+[A-ZÁÉÍÓÚÀÂÊÔÃÕÇ][A-ZÁÉÍÓÚÀÂÊÔÃÕÇa-záéíóúàâêôãõç\s,§°º().\-:/\d]{2,}$", line.strip()):
                 return False
+            # Exceção: Numeração romana + travessão + MAIÚSCULAS é heading
+            if re.match(r"^[IVXLC]+\s*[-–—.]\s+[A-ZÁÉÍÓÚÀÂÊÔÃÕÇ]", line.strip()) and line.strip().upper() == line.strip():
+                return False
             return True
     return False
 
@@ -394,6 +399,25 @@ def fill_heading_gaps(md: str) -> str:
             lines_list[i] = "## " + stripped
             logger.info("fill_heading_gaps pass1: promoted -> %s", stripped[:80])
         i += 1
+
+
+    # ── Pass 1b: promover headings com numeração romana → ## ROMAN. TÍTULO ──
+    roman_heading_re = re.compile(
+        r"^([IVXLC]+)\s*[-–—.]\s+([A-ZÁÉÍÓÚÀÂÊÔÃÕÇ][A-ZÁÉÍÓÚÀÂÊÔÃÕÇa-záéíóúàâêôãõç\s,§°º().\-:/\d]{2,})$"
+    )
+    for idx_r, ln_r in enumerate(lines_list):
+        stripped_r = ln_r.strip()
+        if stripped_r.startswith("#"):
+            continue
+        if stripped_r.startswith(">"):
+            clean_r = stripped_r.lstrip(">").strip()
+            if roman_heading_re.match(clean_r) and clean_r.upper() == clean_r:
+                lines_list[idx_r] = "## " + clean_r
+                logger.info("fill_heading_gaps pass1b: roman unquoted+promoted -> %s", clean_r[:80])
+                continue
+        if roman_heading_re.match(stripped_r) and stripped_r.upper() == stripped_r:
+            lines_list[idx_r] = "## " + stripped_r
+            logger.info("fill_heading_gaps pass1b: roman promoted -> %s", stripped_r[:80])
 
     # ── Pass 2: detectar gaps na numeração ## N. ──
     heading_re = re.compile(r"^##\s+(\d+)\.")
