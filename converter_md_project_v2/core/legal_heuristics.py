@@ -493,7 +493,11 @@ def _apply_forense(line: str) -> str:
     # H2: seções principais (DOS FATOS, DO DIREITO, etc.)
     for pattern in FORENSE_H2_PATTERNS:
         if re.match(pattern, upper_line, re.IGNORECASE):
+            logger.info("FORENSE_H2_MATCH: pattern=%s matched line='%s'", pattern[:40], line[:60])
             return f"## {line}"
+    # Debug: log se a linha parece um heading romano mas não casou
+    if re.match(r"^[IVXLC]+\s*[-–—.]", upper_line):
+        logger.warning("FORENSE_H2_MISS: Roman numeral line not matched: '%s' upper='%s'", line[:80], upper_line[:80])
 
     # Ignorar itens de enumeração — nunca viram heading
     if _is_enumeration(line):
@@ -591,7 +595,11 @@ def _apply_google(line: str) -> str:
     # Seções nomeadas (DOS FATOS, DO DIREITO, etc.) → bold
     for pattern in FORENSE_H2_PATTERNS:
         if re.match(pattern, upper_line, re.IGNORECASE):
+            logger.info("GOOGLE_H2_MATCH: pattern=%s matched line='%s'", pattern[:40], line[:60])
             return f"**{line}**"
+    # Debug: log se a linha parece um heading romano mas não casou
+    if re.match(r"^[IVXLC]+\s*[-–—.]", upper_line):
+        logger.warning("GOOGLE_H2_MISS: Roman numeral line not matched: '%s'", line[:80])
 
     # Seções numeradas (1. DOS FATOS) → bold
     if _GOOGLE_NUMBERED_SECTION_RE.match(line.strip()):
