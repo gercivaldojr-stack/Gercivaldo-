@@ -87,6 +87,11 @@ ENUMERATION_PATTERNS = [
     r"^\d+\.\d+\.?\s+",    # 1.1 texto, 1.2. texto (subseções numéricas no modo forense)
 ]
 
+# Padrão genérico de seções com numeração romana: [IVXLC]+ – TÍTULO EM MAIÚSCULAS → H2
+FORENSE_ROMAN_H2_PATTERN = re.compile(
+    r"^([IVXLC]+)\s*[\-\u2013\u2014.]\s+([A-ZÁÉÍÓÚÀÂÊÔÃÕÇ][A-ZÁÉÍÓÚÀÂÊÔÃÕÇa-záéíóúàâêôãõç\s,§°º().\-:/\d]{2,})$"
+)
+
 # Padrões de seções numeradas forense: \d+\.\s+TÍTULO (aceita Art., nº, preposições) → H2
 FORENSE_NUMBERED_H2_PATTERN = re.compile(
     r"^(\d+)\.\s+([A-ZÁÉÍÓÚÀÂÊÔÃÕÇ][A-ZÁÉÍÓÚÀÂÊÔÃÕÇa-záéíóúàâêôãõç\s,§°º().\-:/\d]{2,})$"
@@ -499,6 +504,11 @@ def _apply_forense(line: str) -> str:
     if re.match(r"^[IVXLC]+\s*[-–—.]", upper_line):
         logger.warning("FORENSE_H2_MISS: Roman numeral line not matched: '%s' upper='%s'", line[:80], upper_line[:80])
 
+    # M6: Seções com numeração romana (I –, II –, etc.) → H2
+    if FORENSE_ROMAN_H2_PATTERN.match(line.strip()) and line.strip().upper() == line.strip():
+        logger.info("ROMAN_H2_FORENSE: matched '%s'", line[:60])
+        return f"## {line}"
+
     # Ignorar itens de enumeração — nunca viram heading
     if _is_enumeration(line):
         return line
@@ -600,6 +610,11 @@ def _apply_google(line: str) -> str:
     # Debug: log se a linha parece um heading romano mas não casou
     if re.match(r"^[IVXLC]+\s*[-–—.]", upper_line):
         logger.warning("GOOGLE_H2_MISS: Roman numeral line not matched: '%s'", line[:80])
+
+    # Seções com numeração romana (I –, II –, etc.) → bold
+    if FORENSE_ROMAN_H2_PATTERN.match(line.strip()) and line.strip().upper() == line.strip():
+        logger.info("ROMAN_H2_GOOGLE: matched '%s'", line[:60])
+        return f"**{line}**"
 
     # Seções numeradas (1. DOS FATOS) → bold
     if _GOOGLE_NUMBERED_SECTION_RE.match(line.strip()):
