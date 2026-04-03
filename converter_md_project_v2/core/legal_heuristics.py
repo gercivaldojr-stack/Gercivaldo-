@@ -96,6 +96,8 @@ def _is_roman_heading(line):
     # Remover ** wrapping de conversões anteriores em modo google
     if s.startswith('**') and s.endswith('**'):
         s = s[2:-2].strip()
+    # Remover zero-width chars e NBSP que podem vir do PDF
+    s = ''.join(c for c in s if ord(c) not in (0x200b, 0x200c, 0x200d, 0xfeff, 0xa0)).strip()
     if not s or len(s) < 4:
         return False
     i = 0
@@ -132,6 +134,8 @@ def _is_numbered_heading(line):
     Usa análise explícita de caracteres para evitar problemas de regex.
     """
     s = line.strip()
+    # Remover zero-width chars e NBSP que podem vir do PDF
+    s = ''.join(c for c in s if ord(c) not in (0x200b, 0x200c, 0x200d, 0xfeff, 0xa0)).strip()
     if not s or len(s) < 5:
         return False
     # Deve começar com dígitos
@@ -320,6 +324,8 @@ def apply_legal_heuristics(
             continue
 
         if mode == "forense":
+            # Limpar zero-width chars do PDF
+            stripped = ''.join(c for c in stripped if ord(c) not in (0x200b, 0x200c, 0x200d, 0xfeff, 0xa0)).strip()
             converted = _apply_forense(stripped)
         else:
             converted = _apply_doutrina(stripped)
@@ -389,7 +395,7 @@ def fill_heading_gaps(md: str) -> str:
     """
     # ── Normalizar caracteres especiais (NBSP, degree sign, etc.) ──
     md = unicodedata.normalize('NFC', md)
-    md = md.replace('\xa0', ' ').replace('\u200b', '')
+    md = md.replace('\xa0', ' ').replace('\u200b', '').replace('\u200c', '').replace('\u200d', '').replace('\ufeff', '')
 
     lines_list = md.split("\n")
 
@@ -560,6 +566,8 @@ def fill_heading_gaps(md: str) -> str:
 
 def _apply_forense(line: str) -> str:
     """Aplica padrões forenses a uma linha."""
+    # Limpar zero-width chars e NBSP do PDF antes de qualquer check
+    line = ''.join(c for c in line if ord(c) not in (0x200b, 0x200c, 0x200d, 0xfeff, 0xa0)).strip()
     upper_line = line.upper().strip()
 
     # M6-FIX: Seções com numeração romana (I –, II –, etc.) → H2
@@ -577,6 +585,10 @@ def _apply_forense(line: str) -> str:
     if _is_numbered_heading(line):
         logger.info("NUMBERED_H2_FORENSE: matched '%s'", line.strip()[:60])
         return f"## {line}"
+
+    # Debug: log quando a linha começa com dígito mas não casou como heading
+    if line.strip() and line.strip()[0].isdigit() and '.' in line.strip()[:5]:
+        logger.warning("NUMBERED_NOT_MATCHED: '%s' (codes: %s)", line.strip()[:80], ' '.join(str(ord(c)) for c in line.strip()[:20]))
 
     # H1: títulos de peças processuais
     for pattern in FORENSE_H1_PATTERNS:
@@ -1232,7 +1244,7 @@ def format_signatures(text: str) -> str:
 
         # Local e data
         if _LOCATION_DATE_RE.match(stripped):
-            formatted.append(stripped)
+            formatted.append(stripped)h
             formatted.append("")
             continue
 
