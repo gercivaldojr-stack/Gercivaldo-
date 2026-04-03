@@ -88,6 +88,42 @@ ENUMERATION_PATTERNS = [
 ]
 
 # Padrão genérico de seções com numeração romana: [IVXLC]+ – TÍTULO EM MAIÚSCULAS → H2
+def _is_roman_heading(line):
+    """Verifica se a linha é heading com numeração romana (I – DOS FATOS, etc.).
+    Usa comparação explícita de códigos Unicode para evitar problemas de encoding.
+    """
+    s = line.strip()
+    if not s or len(s) < 4:
+        return False
+    i = 0
+    while i < len(s) and s[i] in 'IVXLC':
+        i += 1
+    if i == 0:
+        return False
+    while i < len(s) and s[i] == ' ':
+        i += 1
+    if i >= len(s):
+        return False
+    ch = ord(s[i])
+    if ch not in (45, 8211, 8212, 46):
+        return False
+    i += 1
+    while i < len(s) and s[i] == ' ':
+        i += 1
+    if i >= len(s):
+        return False
+    rest = s[i:]
+    if len(rest) < 2:
+        return False
+    upper_count = sum(1 for c in rest if c.isupper())
+    alpha_count = sum(1 for c in rest if c.isalpha())
+    if alpha_count == 0:
+        return False
+    if upper_count / alpha_count < 0.6:
+        return False
+    return True
+
+
 FORENSE_ROMAN_H2_PATTERN = re.compile(
     r"^([IVXLC]+)\s*[\-\u2013\u2014.]\s+([A-ZÁÉÍÓÚÀÂÊÔÃÕÇ][A-ZÁÉÍÓÚÀÂÊÔÃÕÇa-záéíóúàâêôãõç\s,§°º().\-:/\d]{2,})$"
 )
@@ -485,6 +521,12 @@ def _apply_forense(line: str) -> str:
     """Aplica padrões forenses a uma linha."""
     upper_line = line.upper().strip()
 
+    # M6-FIX: Seções com numeração romana (I –, II –, etc.) → H2
+    # Check explícito ANTES de qualquer outro padrão para evitar bypass
+    if _is_roman_heading(line):
+        logger.info("ROMAN_H2_FORENSE: matched '%s'", line.strip()[:60])
+        return f"## {line}"
+
     # H1: títulos de peças processuais
     for pattern in FORENSE_H1_PATTERNS:
         if re.match(pattern, upper_line, re.IGNORECASE):
@@ -592,6 +634,11 @@ def _apply_google(line: str) -> str:
     - Tudo sem usar # headings
     """
     upper_line = line.upper().strip()
+
+    # M6-FIX: Seções com numeração romana (I –, II –, etc.) → bold
+    if _is_roman_heading(line):
+        logger.info("ROMAN_H2_GOOGLE: matched '%s'", line.strip()[:60])
+        return f"**{line}**"
 
     # Títulos de peça → bold
     for pattern in FORENSE_H1_PATTERNS:
