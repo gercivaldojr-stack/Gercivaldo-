@@ -73,6 +73,8 @@ def clean_text(text: str, remove_headers_footers: bool = True) -> str:
 
     # Normalizar Unicode NFC (chars decompostos de DOCX)
     text = unicodedata.normalize("NFC", text)
+    # Remover zero-width chars, BOM e NBSP que podem vir do PDF
+    text = text.replace('\u200b', '').replace('\u200c', '').replace('\u200d', '').replace('\ufeff', '').replace('\xa0', ' ')
 
     text = fix_hyphenation(text)
     text = normalize_whitespace(text)
