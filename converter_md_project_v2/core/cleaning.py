@@ -693,5 +693,4 @@ def remove_corrupted_glyphs(text: str) -> str:
         result_line = "".join(clean_line)
         result_line = re.sub(r" +", " ", result_line)
         cleaned.append(result_line)
-            return "\n".join(cleaned)
     return "\n".join(cleaned)
