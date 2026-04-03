@@ -93,6 +93,9 @@ def _is_roman_heading(line):
     Usa comparação explícita de códigos Unicode para evitar problemas de encoding.
     """
     s = line.strip()
+    # Remover ** wrapping de conversões anteriores em modo google
+    if s.startswith('**') and s.endswith('**'):
+        s = s[2:-2].strip()
     if not s or len(s) < 4:
         return False
     i = 0
@@ -524,8 +527,12 @@ def _apply_forense(line: str) -> str:
     # M6-FIX: Seções com numeração romana (I –, II –, etc.) → H2
     # Check explícito ANTES de qualquer outro padrão para evitar bypass
     if _is_roman_heading(line):
-        logger.info("ROMAN_H2_FORENSE: matched '%s'", line.strip()[:60])
-        return f"## {line}"
+        # Se a linha já tem ** de conversão anterior, remover antes de aplicar ##
+        clean = line.strip()
+        if clean.startswith('**') and clean.endswith('**'):
+            clean = clean[2:-2].strip()
+        logger.info("ROMAN_H2_FORENSE: matched '%s'", clean[:60])
+        return f"## {clean}"
 
     # H1: títulos de peças processuais
     for pattern in FORENSE_H1_PATTERNS:
