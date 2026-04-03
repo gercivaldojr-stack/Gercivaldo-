@@ -403,6 +403,9 @@ def _is_block_boundary(line: str) -> bool:
         return True
     if s.startswith("|"):
         return True
+    # Seções numeradas (N. TÍTULO) são sempre block boundaries
+    if re.match(r"^\d+\.\s+[A-ZÁÉÍÓÚÀÂÊÔÃÕÇ]", s):
+        return True
     if s.isupper() and len(s) < 100:
         return True
     return False
@@ -421,6 +424,9 @@ def _is_next_line_protected(line: str) -> bool:
         r"^([a-z]\)|[a-z]\.|[ivxlc]+\)|[IVXLC]+\)|\d+\)|\d+\.|[IVXLC]+\s*[-–—]\s+|§\s*\d+)\s*",
         s,
     ):
+        return True
+    # Seções numeradas (N. TÍTULO) são sempre protegidas
+    if re.match(r"^\d+\.\s+[A-ZÁÉÍÓÚÀÂÊÔÃÕÇ]", s):
         return True
     if s.isupper() and len(s) < 100:
         return True
@@ -468,6 +474,14 @@ def rejoin_broken_paragraphs(text: str) -> str:
                 result.append(buffer)
                 buffer = ""
             buffer = stripped
+            continue
+
+        # Seções numeradas (N. TÍTULO EM MAIÚSCULAS) nunca são merged
+        if re.match(r"^\d+\.\s+[A-ZÁÉÍÓÚÀÂÊÔÃÕÇ]", stripped) and stripped.upper() == stripped:
+            if buffer:
+                result.append(buffer)
+                buffer = ""
+            result.append(stripped)
             continue
 
         if not buffer:
