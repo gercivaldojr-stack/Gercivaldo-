@@ -306,6 +306,26 @@ def fill_heading_gaps(md: str) -> str:
 
     lines_list = md.split("\n")
 
+    # ── Pass 0: extrair headings numerados embutidos em parágrafos ──
+    # Se uma linha longa contém "\nN. TÍTULO" ou " N. TÍTULO" no meio,
+    # separar em duas linhas antes de processar
+    _embedded_heading_re = re.compile(
+        r"(\S)\s+(\d+\.\s+[A-ZÁÉÍÓÚÀÂÊÔÃÕÇ][A-ZÁÉÍÓÚÀÂÊÔÃÕÇ\s]{3,})"
+    )
+    new_lines = []
+    for ln in lines_list:
+        m_emb = _embedded_heading_re.search(ln)
+        if m_emb and len(ln) > 80:
+            split_pos = m_emb.start(2)
+            before_part = ln[:split_pos].rstrip()
+            heading_part = ln[split_pos:]
+            new_lines.append(before_part)
+            new_lines.append(heading_part)
+            logger.info("fill_heading_gaps pass0: split embedded heading from paragraph: %s", heading_part[:80])
+        else:
+            new_lines.append(ln)
+    lines_list = new_lines
+
     # ── Pass 1: promover linhas cruas N. TÍTULO → ## N. TÍTULO ──
     raw_heading_re = re.compile(
         r"^(\d+)\.\s+([A-ZÁÉÍÓÚÀÂÊÔÃÕÇ]"
@@ -331,6 +351,23 @@ def fill_heading_gaps(md: str) -> str:
         if stripped.startswith("#"):
             i += 1
             continue
+
+        # Corrigir linhas que foram erroneamente marcadas como blockquote (>) mas são headings
+        if stripped.startswith(">"):
+            clean = stripped.lstrip(">").strip()
+            m_bq = raw_heading_re.match(clean)
+            if not m_bq:
+                fm_bq = fallback_heading_re.match(clean)
+                if fm_bq:
+                    upper_count = sum(1 for ch in clean if ch.isupper())
+                    alpha_count = sum(1 for ch in clean if ch.isalpha())
+                    if alpha_count > 0 and upper_count / alpha_count > 0.5:
+                        m_bq = fm_bq
+            if m_bq:
+                lines_list[i] = "## " + clean
+                logger.info("fill_heading_gaps pass1: unquoted+promoted -> %s", clean[:80])
+                i += 1
+                continue
 
         m = raw_heading_re.match(stripped)
         # Fallback: se o regex estrito falha, tentar o tolerante
@@ -736,6 +773,8 @@ def detect_blockquotes(text: str, detect_citations: bool = True) -> str:
                 # Parar em: heading, linha em branco dupla, ou início de nova seção
                 if s.startswith("#"):
                     break
+                if re.match(r"^\d+\.\s+[A-ZÁÉÍÓÚÀÂÊÔÃÕÇ]", s) and s.upper() == s:
+                    break
                 if not s:
                     blank_count += 1
                     if blank_count >= 2:
@@ -804,6 +843,9 @@ def detect_blockquotes(text: str, detect_citations: bool = True) -> str:
             while i < len(lines):
                 s = lines[i].strip()
                 if not s or s.startswith("#"):
+                    break
+                # Parar se a linha é um heading numerado (N. TÍTULO EM MAIÚSCULAS)
+                if re.match(r"^\d+\.\s+[A-ZÁÉÍÓÚÀÂÊÔÃÕÇ]", s) and s.upper() == s:
                     break
                 # Se próxima linha é outra citação ou texto normal, parar
                 if _JURISPRUDENCE_CITATION_START.match(s):
