@@ -57,8 +57,6 @@ FORENSE_H2_PATTERNS = [
     r"^(D[AO]S?\s+PROVAS?)\s*$",
     r"^(D[AO]\s+TUTELA\s+.*)",
     r"^(CLÁUSULA\s+\w+.*)",
-    # Genérico: numeração romana + travessão/ponto + título em MAIÚSCULAS
-    r"^([IVXLC]+\s*[-–—.]\s+[A-ZÁÉÍÓÚÀÂÊÔÃÕÇ][A-ZÁÉÍÓÚÀÂÊÔÃÕÇa-záéíóúàâêôãõç\s,§°º().\-:/\d]{2,})",
 ]
 
 # FIX: Art. removido de FORENSE_H3_PATTERNS.
@@ -170,12 +168,12 @@ def _is_numbered_heading(line):
 
 
 FORENSE_ROMAN_H2_PATTERN = re.compile(
-    r"^([IVXLC]+)\s*[\-\u2013\u2014.]\s+([A-ZÁÉÍÓÚÀÂÊÔÃÕÇ][A-ZÁÉÍÓÚÀÂÊÔÃÕÇa-záéíóúàâêôãõç\s,§°º().\-:/\d]{2,})$"
+    r"^([IVXLC]+)\s*[\-\u2013\u2014.]\s+([A-ZÁÉÍÓÚÀÂÊÔÃÕÇ][A-ZÁÉÍÓÚÀÂÊÔÃÕÇ\s,§°º().\-:/\d]{2,})$"
 )
 
 # Padrões de seções numeradas forense: \d+\.\s+TÍTULO (aceita Art., nº, preposições) → H2
 FORENSE_NUMBERED_H2_PATTERN = re.compile(
-    r"^(\d+)\.\s+([A-ZÁÉÍÓÚÀÂÊÔÃÕÇ][A-ZÁÉÍÓÚÀÂÊÔÃÕÇa-záéíóúàâêôãõç\s,§°º().\-:/\d]{2,})$"
+    r"^(\d+)\.\s+([A-ZÁÉÍÓÚÀÂÊÔÃÕÇ][A-ZÁÉÍÓÚÀÂÊÔÃÕÇ\s,§°º().\-:/\d]{2,})$"
 )
 
 # Padrões de subseções numeradas forense: \d+\.\d+ → H3
@@ -368,7 +366,7 @@ def _is_enumeration(line: str) -> bool:
     for p in ENUMERATION_PATTERNS:
         if re.match(p, line):
             # Exceção: \d+\.\s+MAIÚSCULAS é seção numerada, não enumeração
-            if re.match(r"^\d+\.\s+[A-ZÁÉÍÓÚÀÂÊÔÃÕÇ][A-ZÁÉÍÓÚÀÂÊÔÃÕÇa-záéíóúàâêôãõç\s,§°º().\-:/\d]{2,}$", line.strip()):
+            if re.match(r"^\d+\.\s+[A-ZÁÉÍÓÚÀÂÊÔÃÕÇ][A-ZÁÉÍÓÚÀÂÊÔÃÕÇ\s,§°º().\-:/\d]{2,}$", line.strip()):
                 return False
             # Exceção: Numeração romana + travessão + MAIÚSCULAS é heading
             if re.match(r"^[IVXLC]+\s*[-–—.]\s+[A-ZÁÉÍÓÚÀÂÊÔÃÕÇ]", line.strip()) and line.strip().upper() == line.strip():
@@ -422,13 +420,13 @@ def fill_heading_gaps(md: str) -> str:
     # ── Pass 1: promover linhas cruas N. TÍTULO → ## N. TÍTULO ──
     raw_heading_re = re.compile(
         r"^(\d+)\.\s+([A-ZÁÉÍÓÚÀÂÊÔÃÕÇ]"
-        r"[A-ZÁÉÍÓÚÀÂÊÔÃÕÇa-záéíóúàâêôãõç\s,§°º()\.\-:/\d]{2,})$"
+        r"[A-ZÁÉÍÓÚÀÂÊÔÃÕÇ\s,§°º()\.\-:/\d]{2,})$"
     )
     trailing_connector = re.compile(
         r"\b(?:DE|DA|DO|DOS|DAS|E|OU|A|AO|AOS|À|ÀS|NA|NO|NAS|NOS|EM|COM|PARA|POR|ANTE|PERANTE|SOB|SOBRE|ENTRE)\s*$"
     )
     uppercase_cont = re.compile(
-        r"^[A-ZÁÉÍÓÚÀÂÊÔÃÕÇ][A-ZÁÉÍÓÚÀÂÊÔÃÕÇa-záéíóúàâêôãõç\s,§°º()\.\-:/\d]{2,}$"
+        r"^[A-ZÁÉÍÓÚÀÂÊÔÃÕÇ][A-ZÁÉÍÓÚÀÂÊÔÃÕÇ\s,§°º()\.\-:/\d]{2,}$"
     )
 
     # Fallback: regex mais tolerante para headings com chars especiais do PDF
@@ -491,7 +489,7 @@ def fill_heading_gaps(md: str) -> str:
 
     # ── Pass 1b: promover headings com numeração romana → ## ROMAN. TÍTULO ──
     roman_heading_re = re.compile(
-        r"^([IVXLC]+)\s*[-–—.]\s+([A-ZÁÉÍÓÚÀÂÊÔÃÕÇ][A-ZÁÉÍÓÚÀÂÊÔÃÕÇa-záéíóúàâêôãõç\s,§°º().\-:/\d]{2,})$"
+        r"^([IVXLC]+)\s*[-–—.]\s+([A-ZÁÉÍÓÚÀÂÊÔÃÕÇ][A-ZÁÉÍÓÚÀÂÊÔÃÕÇ\s,§°º().\-:/\d]{2,})$"
     )
     for idx_r, ln_r in enumerate(lines_list):
         stripped_r = ln_r.strip()
@@ -1244,7 +1242,7 @@ def format_signatures(text: str) -> str:
 
         # Local e data
         if _LOCATION_DATE_RE.match(stripped):
-            formatted.append(stripped)h
+            formatted.append(stripped)
             formatted.append("")
             continue
 
