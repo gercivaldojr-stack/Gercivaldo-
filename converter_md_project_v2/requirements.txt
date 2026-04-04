@@ -1,5 +1,18 @@
-streamlit>=1.28.0
+# Dependências obrigatórias
 pymupdf>=1.23.0
 python-docx>=1.0.0
-pytest>=7.4.0
 chardet>=5.0.0
+
+# Interface web (opcional - apenas se usar streamlit run app/main.py)
+streamlit>=1.28.0
+
+# Testes
+pytest>=7.4.0
+
+# Configuração YAML (opcional - apenas se usar --config)
+pyyaml>=6.0
+
+# OCR seletivo (opcional - apenas se usar --ocr)
+# pytesseract>=0.3.10
+# Pillow>=10.0.0
+# Requer Tesseract instalado no sistema: sudo apt install tesseract-ocr tesseract-ocr-por

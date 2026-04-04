@@ -117,6 +117,11 @@ def convert_document(
     wrap_notes: bool = False,
     preserve_inline_formatting: bool = True,
     generate_toc_flag: bool = False,
+    ocr_enabled: bool = False,
+    ocr_lang: str = "por",
+    ocr_threshold: int = 30,
+    page_range: str | None = None,
+    chunk_size: int | None = None,
 ) -> ConversionResult:
     """Converte um documento jurídico para Markdown estruturado.
 
@@ -132,6 +137,12 @@ def convert_document(
         extract_procedural: Se True, extrai metadados processuais (M1 v4.1).
         separate_enums: Se True, separa itens enumerados com ; (M2 v4.1).
         wrap_notes: Se True, demarca notas internas em blockquote (M3 v4.1).
+        ocr_enabled: Se True, aplica OCR seletivo por página.
+        ocr_lang: Idioma do Tesseract (padrão: por).
+        ocr_threshold: Mínimo de chars para considerar página com texto.
+        page_range: Páginas a processar, 1-based (ex: "1-50", "1,5,10-20"). Apenas PDF.
+        chunk_size: Páginas por chunk para PDFs grandes. Processa N páginas por
+            vez e libera memória entre chunks. None = processar tudo de uma vez.
 
     Returns:
         ConversionResult com o Markdown e metadados.
@@ -144,6 +155,11 @@ def convert_document(
         raw_text = extract_text(
             file_path=file_path, file_bytes=file_bytes, filename=filename,
             preserve_inline_formatting=preserve_inline_formatting,
+            ocr_enabled=ocr_enabled,
+            ocr_lang=ocr_lang,
+            ocr_threshold=ocr_threshold,
+            page_range=page_range,
+            chunk_size=chunk_size,
         )
 
         if not raw_text.strip():
@@ -236,19 +252,17 @@ def convert_batch(
     wrap_notes: bool = False,
     preserve_inline_formatting: bool = True,
     generate_toc_flag: bool = False,
+    ocr_enabled: bool = False,
+    ocr_lang: str = "por",
+    ocr_threshold: int = 30,
+    page_range: str | None = None,
+    chunk_size: int | None = None,
 ) -> list[ConversionResult]:
     """Converte múltiplos documentos em lote.
 
     Args:
         files: Lista de dicts com 'file_bytes' e 'filename'.
-        mode: Modo de heurísticas.
-        separate: Se True, separa peças.
-        remove_headers_footers: Se True, remove cabeçalhos/rodapés.
-        detect_citations: Se True, detecta citações jurisprudenciais (P7).
-        extract_metadata: Se True, extrai metadados expandidos (P8).
-        extract_procedural: Se True, extrai metadados processuais (M1 v4.1).
-        separate_enums: Se True, separa itens enumerados (M2 v4.1).
-        wrap_notes: Se True, demarca notas internas (M3 v4.1).
+        Demais args: mesmos de convert_document.
 
     Returns:
         Lista de ConversionResult.
@@ -271,6 +285,11 @@ def convert_batch(
             wrap_notes=wrap_notes,
             preserve_inline_formatting=preserve_inline_formatting,
             generate_toc_flag=generate_toc_flag,
+            ocr_enabled=ocr_enabled,
+            ocr_lang=ocr_lang,
+            ocr_threshold=ocr_threshold,
+            page_range=page_range,
+            chunk_size=chunk_size,
         )
         results.append(result)
 
