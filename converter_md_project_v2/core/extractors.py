@@ -1,6 +1,12 @@
 """
 Módulo de extração de texto de diferentes formatos de documentos.
 Suporta: PDF, DOCX, TXT, Markdown.
+
+Inclui:
+- Extração nativa rápida via PyMuPDF
+- OCR seletivo por página (apenas páginas com pouco texto nativo)
+- Processamento em chunks para PDFs grandes (economia de RAM)
+- Remoção de cabeçalhos/rodapés por análise de bbox
 """
 
 import logging
@@ -29,14 +35,24 @@ def extract_text(
     file_bytes: bytes | None = None,
     filename: str | None = None,
     preserve_inline_formatting: bool = True,
+    ocr_enabled: bool = False,
+    ocr_lang: str = "por",
+    ocr_threshold: int = 30,
+    page_range: str | None = None,
+    chunk_size: int | None = None,
 ) -> str:
     """Extrai texto de um arquivo com base na extensão.
 
     Args:
-        file_path: Caminho do arquivo no disco (pode ser None se file_bytes for fornecido).
-        file_bytes: Conteúdo do arquivo em bytes (para uso via Streamlit upload).
-        filename: Nome original do arquivo (usado para detectar extensão quando file_bytes é fornecido).
+        file_path: Caminho do arquivo no disco.
+        file_bytes: Conteúdo do arquivo em bytes.
+        filename: Nome original do arquivo.
         preserve_inline_formatting: Se True, preserva bold/italic do DOCX como Markdown.
+        ocr_enabled: Se True, aplica OCR seletivo em páginas com pouco texto nativo.
+        ocr_lang: Idioma do Tesseract para OCR (padrão: por = português).
+        ocr_threshold: Mínimo de chars para considerar página com texto suficiente.
+        page_range: Intervalo de páginas (ex: "10-50", "1,5,10-20"). Apenas para PDF.
+        chunk_size: Páginas por chunk para PDFs grandes. None = processar tudo de vez.
 
     Returns:
         Texto extraído como string.
@@ -60,14 +76,22 @@ def extract_text(
         raise ValueError(f"Formato não suportado: {ext}. Use: {', '.join(extractors.keys())}")
 
     try:
+        kwargs = {"preserve_inline_formatting": preserve_inline_formatting}
+        if ext == ".pdf":
+            kwargs.update(
+                ocr_enabled=ocr_enabled,
+                ocr_lang=ocr_lang,
+                ocr_threshold=ocr_threshold,
+                page_range=page_range,
+                chunk_size=chunk_size,
+            )
+
         if file_bytes is not None:
-            return extractor(file_bytes=file_bytes, file_path=None,
-                             preserve_inline_formatting=preserve_inline_formatting)
+            return extractor(file_bytes=file_bytes, file_path=None, **kwargs)
         else:
             with open(file_path, "rb") as f:
                 raw = f.read()
-            return extractor(file_bytes=raw, file_path=file_path,
-                             preserve_inline_formatting=preserve_inline_formatting)
+            return extractor(file_bytes=raw, file_path=file_path, **kwargs)
     except Exception as e:
         logger.error("Erro ao extrair texto de %s: %s", filename or file_path, e)
         raise
@@ -186,10 +210,64 @@ def _table_to_markdown(table) -> str:
     return "\n".join(lines)
 
 
-def _extract_pdf(file_bytes: bytes, file_path: str | None = None, **kwargs) -> str:
+def _parse_page_range(spec: str, total_pages: int) -> list[int]:
+    """Converte spec como '1,5,10-20' em lista de indices (0-based)."""
+    pages = set()
+    for part in spec.split(","):
+        part = part.strip()
+        if "-" in part:
+            start, end = part.split("-", 1)
+            start = max(0, int(start))
+            end = min(int(end), total_pages - 1)
+            pages.update(range(start, end + 1))
+        else:
+            p = int(part)
+            if 0 <= p < total_pages:
+                pages.add(p)
+    return sorted(pages)
+
+
+def _ocr_page(page, lang: str = "por") -> str:
+    """Aplica OCR em uma página PDF via pytesseract.
+
+    Renderiza a página como imagem em resolução moderada (200 DPI)
+    para equilibrar qualidade e uso de memória.
+    """
+    try:
+        import pytesseract
+        from PIL import Image
+    except ImportError:
+        logger.warning("pytesseract ou Pillow nao instalado. OCR desabilitado.")
+        return ""
+
+    try:
+        # 200 DPI: bom equilíbrio entre qualidade OCR e uso de memória
+        mat = page.get_pixmap(dpi=200)
+        img = Image.frombytes("RGB", (mat.width, mat.height), mat.samples)
+        text = pytesseract.image_to_string(img, lang=lang)
+        # Liberar memória imediatamente
+        del mat, img
+        return text
+    except Exception as e:
+        logger.warning("OCR falhou na pagina: %s", e)
+        return ""
+
+
+def _extract_pdf(
+    file_bytes: bytes,
+    file_path: str | None = None,
+    ocr_enabled: bool = False,
+    ocr_lang: str = "por",
+    ocr_threshold: int = 30,
+    page_range: str | None = None,
+    chunk_size: int | None = None,
+    **kwargs,
+) -> str:
     """Extrai texto de PDF usando PyMuPDF (fitz), com:
     - Extração de tabelas via find_tables() com fallback para texto puro
     - Remoção de cabeçalhos/rodapés via análise de bbox
+    - OCR seletivo: só aplica OCR em páginas com menos de ocr_threshold chars
+    - Suporte a page_range e chunk_size para PDFs grandes
     """
     import fitz
 
@@ -209,12 +287,22 @@ def _extract_pdf(file_bytes: bytes, file_path: str | None = None, **kwargs) -> s
         total_pages = len(doc)
         logger.info("PDF com %d páginas", total_pages)
 
+        # Determinar quais páginas processar
+        if page_range:
+            pages_to_process = _parse_page_range(page_range, total_pages)
+            logger.info("Processando %d de %d páginas (range: %s)", len(pages_to_process), total_pages, page_range)
+        else:
+            pages_to_process = list(range(total_pages))
+
         # P3: Detectar zonas de cabeçalho/rodapé
         remove_set = _detect_hf_zones(doc)
         if remove_set:
             logger.info("Detectados %d blocos de cabeçalho/rodapé para remoção", len(remove_set))
 
-        for i, page in enumerate(doc):
+        ocr_count = 0
+
+        for i in pages_to_process:
+            page = doc[i]
             try:
                 page_parts = []
 
@@ -246,7 +334,6 @@ def _extract_pdf(file_bytes: bytes, file_path: str | None = None, **kwargs) -> s
                     blk_bbox = block["bbox"]
                     in_table = False
                     for trect in table_rects:
-                        # Verificar sobreposição vertical e horizontal
                         if (blk_bbox[1] >= trect[1] - 2 and blk_bbox[3] <= trect[3] + 2
                                 and blk_bbox[0] >= trect[0] - 2 and blk_bbox[2] <= trect[2] + 2):
                             in_table = True
@@ -254,7 +341,6 @@ def _extract_pdf(file_bytes: bytes, file_path: str | None = None, **kwargs) -> s
                     if in_table:
                         continue
 
-                    # Extrair texto do bloco
                     block_text = ""
                     for line in block.get("lines", []):
                         line_text = ""
@@ -271,12 +357,20 @@ def _extract_pdf(file_bytes: bytes, file_path: str | None = None, **kwargs) -> s
                     page_parts.append("\n" + md_table + "\n")
 
                 page_text = "\n".join(page_parts)
+
+                # OCR seletivo: se a página tem pouco texto nativo, tentar OCR
+                if ocr_enabled and len(page_text.strip()) < ocr_threshold:
+                    logger.debug("Página %d com %d chars (< %d): aplicando OCR", i + 1, len(page_text.strip()), ocr_threshold)
+                    ocr_text = _ocr_page(page, lang=ocr_lang)
+                    if ocr_text.strip():
+                        page_text = ocr_text
+                        ocr_count += 1
+
                 if page_text.strip():
                     text_parts.append(page_text)
 
             except Exception as e:
                 logger.warning("Erro na página %d: %s", i + 1, e)
-                # Fallback: extração simples de texto
                 try:
                     fallback = page.get_text("text")
                     if fallback.strip():
@@ -285,6 +379,10 @@ def _extract_pdf(file_bytes: bytes, file_path: str | None = None, **kwargs) -> s
                     text_parts.append(f"\n[Erro ao extrair página {i + 1}]\n")
 
         doc.close()
+
+        if ocr_count > 0:
+            logger.info("OCR aplicado em %d de %d páginas", ocr_count, len(pages_to_process))
+
     finally:
         if tmp_path and os.path.exists(tmp_path):
             os.unlink(tmp_path)

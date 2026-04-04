@@ -96,7 +96,7 @@ def clean_text(text: str, remove_headers_footers: bool = True) -> str:
 
 
 def reconstruct_pdf_headings(text: str) -> str:
-    """Reconstrói headings de seções numeradas quebrados em múltiplas linhas pelo PDF.
+    r"""Reconstrói headings de seções numeradas quebrados em múltiplas linhas pelo PDF.
 
     Problema: Quando um heading como
         '8. DA RESERVA INTEGRAL DE BENS (Art. 628, § 2°, DO CPC) E DO'

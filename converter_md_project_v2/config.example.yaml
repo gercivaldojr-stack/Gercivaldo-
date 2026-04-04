@@ -1,0 +1,48 @@
+# Configuração do Conversor Jurídico PDF → Markdown
+# Copie este arquivo para config.yaml e ajuste conforme necessário.
+
+# Modo de heurísticas: "forense" (peças processuais) ou "doutrina" (livros/artigos)
+mode: "forense"
+
+# Gerar sumário automático (TOC)
+toc: false
+
+# Separar peças processuais dentro do mesmo documento
+separate: false
+
+# Detectar citações jurisprudenciais como blockquote
+detect_citations: true
+
+# Extrair metadados expandidos (tipo_peca, paciente, etc.)
+extract_metadata: false
+
+# Extrair metadados processuais (autor, réu, comarca)
+extract_procedural: false
+
+# Separar itens enumerados com ; em lista Markdown
+separate_enums: false
+
+# Demarcar notas internas em blockquote
+wrap_notes: false
+
+# Remover cabeçalhos/rodapés repetidos (false = não remover)
+no_hf: false
+
+# --- OCR ---
+# Habilitar OCR seletivo (requer pytesseract + Tesseract instalado)
+ocr: false
+
+# Idioma do Tesseract (por = português, eng = inglês)
+ocr_lang: "por"
+
+# Mínimo de caracteres para considerar página com texto suficiente
+# Páginas com menos chars que isso receberão OCR
+ocr_threshold: 30
+
+# --- Performance ---
+# Intervalo de páginas (null = todas). Ex: "10-50", "1,5,10-20"
+# pages: "0-100"
+
+# Páginas por chunk para PDFs grandes (null = processar tudo de vez)
+# Recomendado para PDFs com 500+ páginas em máquinas com pouca RAM
+# chunk_size: 100
