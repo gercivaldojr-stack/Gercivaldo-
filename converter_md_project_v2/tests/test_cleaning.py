@@ -8,6 +8,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from core.cleaning import (
     clean_text,
     fix_hyphenation,
+    normalize_bullets,
     normalize_legal_citations,
     normalize_paragraphs,
     normalize_whitespace,
@@ -577,3 +578,48 @@ class TestCleanText:
         text = "Conforme o REsp\n1234567-89.2024 decidiu."
         result = clean_text(text, remove_headers_footers=False)
         assert "REsp 1234567-89.2024" in result
+
+    def test_pipeline_includes_normalize_bullets(self):
+        text = "Itens:\n• primeiro item\n◦ segundo item\n▪ terceiro"
+        result = clean_text(text, remove_headers_footers=False)
+        assert "- primeiro item" in result
+        assert "- segundo item" in result
+        assert "- terceiro" in result
+
+
+class TestNormalizeBullets:
+    """Conversão de chars de bullet para Markdown '- '."""
+
+    def test_bullet_dot(self):
+        assert normalize_bullets("• texto") == "- texto"
+
+    def test_open_bullet(self):
+        assert normalize_bullets("◦ texto") == "- texto"
+
+    def test_square_bullet(self):
+        assert normalize_bullets("▪ texto") == "- texto"
+
+    def test_arrow_bullet(self):
+        assert normalize_bullets("► texto") == "- texto"
+
+    def test_dash_bullet(self):
+        assert normalize_bullets("– texto") == "- texto"
+
+    def test_multiline(self):
+        text = "Itens:\n• primeiro\n• segundo\n• terceiro"
+        result = normalize_bullets(text)
+        assert result == "Itens:\n- primeiro\n- segundo\n- terceiro"
+
+    def test_no_bullet(self):
+        text = "Texto normal sem bullet."
+        assert normalize_bullets(text) == text
+
+    def test_bullet_mid_line_preserved(self):
+        """Bullet no meio da linha NÃO deve ser convertido."""
+        text = "O item • não deve mudar"
+        assert normalize_bullets(text) == text
+
+    def test_bullet_without_space_preserved(self):
+        """Bullet sem espaço após NÃO deve ser convertido."""
+        text = "•texto sem espaço"
+        assert normalize_bullets(text) == text

@@ -8,6 +8,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from core.legal_heuristics import (
     apply_legal_heuristics,
     detect_blockquotes,
+    fill_heading_gaps,
     format_signatures,
     generate_toc,
     remove_sumario,
@@ -845,3 +846,72 @@ class TestFormatSignatures:
         result = apply_legal_heuristics(text, mode="google")
         assert "---" in result
         assert "**ADVOGADO NOME**" in result
+
+
+class TestRomanDecimalSubsections:
+    """Sub-seções com numeração romana+decimal (II.1, III.2) → H3."""
+
+    def test_ii_1_is_h3(self):
+        text = "II.1 — Competência territorial"
+        result = apply_legal_heuristics(text, mode="forense")
+        assert result.strip().startswith("### ")
+
+    def test_ii_2_is_h3(self):
+        text = "II.2 — Legitimidade passiva"
+        result = apply_legal_heuristics(text, mode="forense")
+        assert result.strip().startswith("### ")
+
+    def test_ii_3_is_h3(self):
+        text = "II.3 — Prescrição"
+        result = apply_legal_heuristics(text, mode="forense")
+        assert result.strip().startswith("### ")
+
+    def test_iii_1_is_h3(self):
+        text = "III.1 – Dano material"
+        result = apply_legal_heuristics(text, mode="forense")
+        assert result.strip().startswith("### ")
+
+    def test_iv_2_dot_is_h3(self):
+        text = "IV.2. Nexo causal"
+        result = apply_legal_heuristics(text, mode="forense")
+        assert result.strip().startswith("### ")
+
+    def test_roman_decimal_in_google_mode(self):
+        text = "II.1 — Competência territorial"
+        result = apply_legal_heuristics(text, mode="google")
+        assert "**" in result
+        assert "#" not in result
+
+    def test_long_roman_decimal_not_heading(self):
+        """Linhas longas com II.1 não devem virar heading."""
+        text = "II.1 — " + "a" * 200
+        result = apply_legal_heuristics(text, mode="forense")
+        assert not result.strip().startswith("### ")
+
+
+class TestTocRomanGaps:
+    """TOC deve incluir seções com numeração romana mesmo com gaps."""
+
+    def test_toc_includes_all_roman_sections(self):
+        text = (
+            "## I – DOS FATOS\n\nTexto.\n\n"
+            "## II – DO DIREITO\n\nTexto.\n\n"
+            "## III – DOS PEDIDOS\n\nTexto."
+        )
+        toc = generate_toc(text)
+        assert "I – DOS FATOS" in toc
+        assert "II – DO DIREITO" in toc
+        assert "III – DOS PEDIDOS" in toc
+
+    def test_roman_gap_filled(self):
+        """Se existe ## V e ## VII, ## VI deve ser inserido."""
+        text = (
+            "## I – INTRODUÇÃO\n\nTexto.\n\n"
+            "## II – QUADRO NORMATIVO\n\nTexto.\n\n"
+            "## III – DOS FATOS\n\nTexto.\n\n"
+            "## V – DOS PEDIDOS\n\nTexto.\n\n"
+            "## VI – CONCLUSÃO\n\nTexto."
+        )
+        from core.legal_heuristics import fill_heading_gaps
+        result = fill_heading_gaps(text)
+        assert "## IV" in result
