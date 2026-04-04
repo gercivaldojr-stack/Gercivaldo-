@@ -70,7 +70,8 @@ Exemplos:
     feat = parser.add_argument_group("funcionalidades")
     feat.add_argument("--toc", action="store_true", help="Gerar sumario automatico.")
     feat.add_argument("--separate", action="store_true", help="Separar pecas processuais.")
-    feat.add_argument("--citations", action="store_true", default=None, help="Detectar citacoes jurisprudenciais como blockquote.")
+    feat.add_argument("--citations", action="store_true", default=None,
+                      help="Detectar citacoes jurisprudenciais como blockquote.")
     feat.add_argument("--no-citations", action="store_true", help="Desabilitar deteccao de citacoes.")
     feat.add_argument("--metadata", action="store_true", help="Extrair metadados expandidos da peca.")
     feat.add_argument("--procedural", action="store_true", help="Extrair metadados processuais (autor, reu, comarca).")
@@ -82,7 +83,10 @@ Exemplos:
     ocr = parser.add_argument_group("OCR")
     ocr.add_argument("--ocr", action="store_true", help="Habilitar OCR seletivo por pagina (requer pytesseract).")
     ocr.add_argument("--ocr-lang", default="por", help="Idioma do Tesseract (padrao: por).")
-    ocr.add_argument("--ocr-threshold", type=int, default=30, help="Chars minimos para considerar pagina com texto (padrao: 30).")
+    ocr.add_argument(
+        "--ocr-threshold", type=int, default=30,
+        help="Chars minimos para considerar pagina com texto (padrao: 30).",
+    )
 
     # Performance
     perf = parser.add_argument_group("performance")

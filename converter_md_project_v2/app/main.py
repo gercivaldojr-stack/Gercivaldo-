@@ -11,9 +11,9 @@ from pathlib import Path
 # Adicionar raiz do projeto ao path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-import streamlit as st
+import streamlit as st  # noqa: E402
 
-from core.pipeline import convert_document
+from core.pipeline import convert_document  # noqa: E402
 
 # Configurar logging
 logging.basicConfig(

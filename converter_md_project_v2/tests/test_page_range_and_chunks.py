@@ -1,8 +1,5 @@
 """Testes para page_range (1-based), chunk_size e extração PDF."""
 
-import tempfile
-from pathlib import Path
-
 import pytest
 
 from core.extractors import _parse_page_range
@@ -181,7 +178,7 @@ class TestChunkSize:
             chunk_size=1000,
         )
         assert result.success
-        assert f"pagina 1" in result.markdown.lower()
+        assert "pagina 1" in result.markdown.lower()
 
     def test_chunk_with_page_range(self):
         """chunk_size + page_range: só processa páginas do range, em chunks."""
@@ -213,10 +210,10 @@ class TestChunkSize:
             chunk_size=2,
         )
         assert r_no_chunk.success and r_chunk.success
+
         # O texto extraído deve ser igual (frontmatter tem timestamp, comparar sem ele)
         def strip_frontmatter(md):
             lines = md.split("\n")
-            in_fm = False
             result = []
             fm_count = 0
             for line in lines:

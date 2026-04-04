@@ -5,7 +5,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from core.cleaning import (
+from core.cleaning import (  # noqa: E402
     clean_text,
     fix_hyphenation,
     normalize_bullets,

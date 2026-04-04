@@ -6,7 +6,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from core.pipeline import convert_batch, convert_document
+from core.pipeline import convert_batch, convert_document  # noqa: E402
 
 
 class TestConvertDocument:

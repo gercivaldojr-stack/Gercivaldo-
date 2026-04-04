@@ -85,6 +85,7 @@ ENUMERATION_PATTERNS = [
     r"^\d+\.\d+\.?\s+",    # 1.1 texto, 1.2. texto (subseções numéricas no modo forense)
 ]
 
+
 # Padrão genérico de seções com numeração romana: [IVXLC]+ – TÍTULO EM MAIÚSCULAS → H2
 def _is_roman_heading(line):
     """Verifica se a linha é heading com numeração romana (I – DOS FATOS, etc.).
@@ -369,12 +370,11 @@ def _is_enumeration(line: str) -> bool:
             if re.match(r"^\d+\.\s+[A-ZÁÉÍÓÚÀÂÊÔÃÕÇ][A-ZÁÉÍÓÚÀÂÊÔÃÕÇ\s,§°º().\-:/\d]{2,}$", line.strip()):
                 return False
             # Exceção: Numeração romana + travessão + MAIÚSCULAS é heading
-            if re.match(r"^[IVXLC]+\s*[-–—.]\s+[A-ZÁÉÍÓÚÀÂÊÔÃÕÇ]", line.strip()) and line.strip().upper() == line.strip():
+            roman_re = r"^[IVXLC]+\s*[-–—.]\s+[A-ZÁÉÍÓÚÀÂÊÔÃÕÇ]"
+            if re.match(roman_re, line.strip()) and line.strip().upper() == line.strip():
                 return False
             return True
     return False
-
-
 
 
 def fill_heading_gaps(md: str) -> str:
@@ -485,7 +485,6 @@ def fill_heading_gaps(md: str) -> str:
             lines_list[i] = "## " + stripped
             logger.info("fill_heading_gaps pass1: promoted -> %s", stripped[:80])
         i += 1
-
 
     # ── Pass 1b: promover headings com numeração romana → ## ROMAN. TÍTULO ──
     roman_heading_re = re.compile(
@@ -623,6 +622,7 @@ def fill_heading_gaps(md: str) -> str:
 
     return "\n".join(lines_list)
 
+
 def _apply_forense(line: str) -> str:
     """Aplica padrões forenses a uma linha."""
     # Limpar zero-width chars e NBSP do PDF antes de qualquer check
@@ -647,7 +647,11 @@ def _apply_forense(line: str) -> str:
 
     # Debug: log quando a linha começa com dígito mas não casou como heading
     if line.strip() and line.strip()[0].isdigit() and '.' in line.strip()[:5]:
-        logger.warning("NUMBERED_NOT_MATCHED: '%s' (codes: %s)", line.strip()[:80], ' '.join(str(ord(c)) for c in line.strip()[:20]))
+        codes = ' '.join(str(ord(c)) for c in line.strip()[:20])
+        logger.warning(
+            "NUMBERED_NOT_MATCHED: '%s' (codes: %s)",
+            line.strip()[:80], codes,
+        )
 
     # H1: títulos de peças processuais
     for pattern in FORENSE_H1_PATTERNS:

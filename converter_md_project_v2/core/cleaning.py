@@ -74,7 +74,9 @@ def clean_text(text: str, remove_headers_footers: bool = True) -> str:
     # Normalizar Unicode NFC (chars decompostos de DOCX)
     text = unicodedata.normalize("NFC", text)
     # Remover zero-width chars, BOM e NBSP que podem vir do PDF
-    text = text.replace('\u200b', '').replace('\u200c', '').replace('\u200d', '').replace('\ufeff', '').replace('\xa0', ' ')
+    for ch in ('\u200b', '\u200c', '\u200d', '\ufeff'):
+        text = text.replace(ch, '')
+    text = text.replace('\xa0', ' ')
 
     text = fix_hyphenation(text)
     text = normalize_whitespace(text)
@@ -169,7 +171,11 @@ def reconstruct_pdf_headings(text: str) -> str:
                     break
                 if re.match(r"^\d+\.", next_s) and next_s != stripped:
                     break
-                if next_s.isupper() or (len(next_s) < 40 and sum(1 for c in next_s if c.isupper()) > sum(1 for c in next_s if c.islower())):
+                upper_heavy = (
+                    len(next_s) < 40
+                    and sum(1 for c in next_s if c.isupper()) > sum(1 for c in next_s if c.islower())
+                )
+                if next_s.isupper() or upper_heavy:
                     merged = merged + " " + next_s
                     j += 1
                 else:
@@ -648,8 +654,12 @@ def _latin_ratio(text: str) -> float:
         if cat.startswith("L"):
             try:
                 script = unicodedata.name(ch, "")
-                if any(w in script for w in ("LATIN", "DIGIT", "SPACE", "FULL STOP",
-                        "COMMA", "SEMICOLON", "COLON", "QUOTATION", "APOSTROPHE", "HYPHEN")):
+                _LATIN_WORDS = (
+                    "LATIN", "DIGIT", "SPACE", "FULL STOP",
+                    "COMMA", "SEMICOLON", "COLON", "QUOTATION",
+                    "APOSTROPHE", "HYPHEN",
+                )
+                if any(w in script for w in _LATIN_WORDS):
                     latin_count += 1
                 elif ord(ch) < 0x024F:
                     latin_count += 1

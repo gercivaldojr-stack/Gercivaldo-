@@ -3,8 +3,6 @@
 import tempfile
 from pathlib import Path
 
-import pytest
-
 from core.config import DEFAULTS, load_config, merge_cli_into_config
 
 

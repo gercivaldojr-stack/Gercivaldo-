@@ -7,7 +7,9 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from core.extractors import extract_text, _is_footer_text, _table_to_markdown, _docx_table_to_markdown
+from core.extractors import (  # noqa: E402
+    extract_text, _is_footer_text, _docx_table_to_markdown,
+)
 
 
 class TestExtractText:
@@ -187,7 +189,6 @@ class TestTableToMarkdown:
     def test_docx_table_to_markdown(self):
         """Testa conversão de tabela DOCX para Markdown."""
         from docx import Document
-        import io
 
         doc = Document()
         table = doc.add_table(rows=2, cols=2)
