@@ -13,7 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import streamlit as st
 
-from core.pipeline import convert_batch, convert_document
+from core.pipeline import convert_document
 
 # Configurar logging
 logging.basicConfig(
@@ -102,7 +102,7 @@ with st.sidebar:
         "Remover cabeçalhos/rodapés repetidos",
         value=True,
         help="Remove cabeçalhos e rodapés que se repetem entre páginas. "
-             "A primeira ocorrência é preservada (P10).",
+             "A primeira ocorrência é preservada.",
     )
 
     detect_citations = st.checkbox(
@@ -121,13 +121,13 @@ with st.sidebar:
     )
 
     st.divider()
-    st.subheader("v4.1")
+    st.subheader("v5.0")
 
     extract_procedural = st.checkbox(
         "Extrair metadados processuais",
         value=False,
         disabled=(mode != "forense"),
-        help="Extrai autor (CPF), reu, comarca, pedido liminar e acoes "
+        help="Extrai autor (CPF), réu, comarca, pedido liminar e ações "
              "cumuladas. Apenas modo forense.",
     )
 
@@ -135,26 +135,75 @@ with st.sidebar:
         "Separar itens enumerados",
         value=False,
         disabled=(mode != "forense"),
-        help="Converte listas com ponto-e-virgula (;) em lista Markdown.",
+        help="Converte listas com ponto-e-vírgula (;) em lista Markdown.",
     )
 
     wrap_notes = st.checkbox(
         "Demarcar notas internas",
         value=False,
         disabled=(mode != "forense"),
-        help="Detecta secoes como 'Observacoes finais de uso', "
-             "'Nota de adequacao' e envolve em blockquote.",
+        help="Detecta seções como 'Observações finais de uso', "
+             "'Nota de adequação' e envolve em blockquote.",
     )
 
     generate_toc_opt = st.checkbox(
-        "Gerar sumario automatico",
+        "Gerar sumário automático",
         value=False,
-        help="Gera sumario (TOC) automatico com links para cada heading.",
+        help="Gera sumário (TOC) automático com links para cada heading.",
+    )
+
+    # ── OCR ──
+    st.divider()
+    st.subheader("OCR")
+
+    ocr_enabled = st.checkbox(
+        "Habilitar OCR seletivo",
+        value=False,
+        help="Aplica OCR apenas em páginas com pouco texto nativo. "
+             "Requer pytesseract e Tesseract instalados no sistema.",
+    )
+
+    ocr_lang = st.selectbox(
+        "Idioma do OCR",
+        options=["por", "eng", "spa"],
+        index=0,
+        disabled=not ocr_enabled,
+        help="Idioma do Tesseract: por (português), eng (inglês), spa (espanhol).",
+    )
+
+    ocr_threshold = st.number_input(
+        "Threshold de OCR (chars mínimos)",
+        min_value=1,
+        max_value=500,
+        value=30,
+        disabled=not ocr_enabled,
+        help="Páginas com menos caracteres que este valor receberão OCR.",
+    )
+
+    # ── Performance / PDFs grandes ──
+    st.divider()
+    st.subheader("Performance / PDFs grandes")
+
+    page_range_input = st.text_input(
+        "Páginas a processar (1-based)",
+        value="",
+        placeholder="Ex: 1-50, 1,5,10-20",
+        help="Deixe vazio para processar todas. Página 1 = primeira página. "
+             "Aplica-se apenas a PDFs.",
+    )
+
+    chunk_size_input = st.number_input(
+        "Chunk size (páginas por lote)",
+        min_value=1,
+        max_value=10000,
+        value=0,
+        help="Processa N páginas por vez, liberando memória entre lotes. "
+             "0 = processar tudo de uma vez. Aplica-se apenas a PDFs.",
     )
 
     st.divider()
     st.caption("Formatos aceitos: PDF, DOCX, TXT, MD")
-    st.caption("v4.1 | Python 3.10+ | PyMuPDF | python-docx")
+    st.caption("v5.0 | Python 3.10+ | PyMuPDF | python-docx")
 
 # ============================================================
 # Upload de arquivos
@@ -174,11 +223,16 @@ if uploaded_files:
         results = []
         progress_bar = st.progress(0, text="Iniciando conversão...")
 
+        # Preparar valores de page_range e chunk_size
+        page_range_val = page_range_input.strip() if page_range_input.strip() else None
+        chunk_size_val = chunk_size_input if chunk_size_input >= 1 else None
+
         for i, uploaded_file in enumerate(uploaded_files):
             progress_text = f"Processando {i + 1}/{len(uploaded_files)}: {uploaded_file.name}"
             progress_bar.progress((i) / len(uploaded_files), text=progress_text)
 
             file_bytes = uploaded_file.read()
+            is_pdf = uploaded_file.name.lower().endswith(".pdf")
 
             result = convert_document(
                 file_bytes=file_bytes,
@@ -192,6 +246,11 @@ if uploaded_files:
                 separate_enums=separate_enums and mode == "forense",
                 wrap_notes=wrap_notes and mode == "forense",
                 generate_toc_flag=generate_toc_opt,
+                ocr_enabled=ocr_enabled and is_pdf,
+                ocr_lang=ocr_lang,
+                ocr_threshold=ocr_threshold,
+                page_range=page_range_val if is_pdf else None,
+                chunk_size=chunk_size_val if is_pdf else None,
             )
             results.append(result)
 
@@ -300,5 +359,6 @@ else:
 
         - **Forense**: otimizado para peças processuais (petições, sentenças, acórdãos)
         - **Doutrina**: otimizado para livros e artigos (capítulos, seções, subseções)
+        - **Google**: estilo Google Drive — negrito inline, sem headings Markdown
         """
     )
