@@ -12,7 +12,7 @@ pytest>=7.4.0
 # Configuração YAML (opcional - apenas se usar --config)
 pyyaml>=6.0
 
-# OCR seletivo (opcional - apenas se usar --ocr)
-# pytesseract>=0.3.10
-# Pillow>=10.0.0
-# Requer Tesseract instalado no sistema: sudo apt install tesseract-ocr tesseract-ocr-por
+# OCR seletivo (opcional na CLI - requer Tesseract no sistema)
+# O Dockerfile já instala tesseract-ocr e tesseract-ocr-por
+pytesseract>=0.3.10
+Pillow>=10.0.0

@@ -119,6 +119,42 @@ ocr_threshold: 30
 
 Flags CLI tem prioridade sobre o arquivo YAML.
 
+## Deploy
+
+### Docker
+
+```bash
+cd converter_md_project_v2
+
+# Build
+docker build -t converter-juridico .
+
+# Run
+docker run -p 8501:8501 converter-juridico
+```
+
+Acesse `http://localhost:8501` no navegador.
+
+### Docker Compose
+
+```bash
+cd converter_md_project_v2
+docker-compose up -d
+```
+
+Para parar: `docker-compose down`
+
+O volume `./output` persiste arquivos convertidos entre reinicializacoes.
+
+### Streamlit Cloud
+
+1. Faca push do repositorio para o GitHub
+2. Acesse [share.streamlit.io](https://share.streamlit.io)
+3. Aponte para o repositorio e selecione `converter_md_project_v2/app/main.py`
+4. Deploy
+
+Nota: OCR nao funciona no Streamlit Cloud (sem Tesseract no sistema).
+
 ## Testes
 
 ```bash
@@ -134,6 +170,10 @@ python -m pytest -v
 converter_md_project_v2/
 ├── cli.py                     # Interface de linha de comando
 ├── config.example.yaml        # Exemplo de configuracao
+├── Dockerfile                 # Build Docker com OCR
+├── docker-compose.yml         # Orquestracao Docker
+├── .dockerignore              # Exclusoes do build Docker
+├── .streamlit/config.toml     # Config Streamlit (tema, server)
 ├── app/main.py                # Interface Streamlit
 ├── core/
 │   ├── config.py              # Sistema de configuracao (YAML + CLI)
