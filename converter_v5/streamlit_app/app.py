@@ -64,6 +64,32 @@ def extract_toc(text: str) -> list:
 def apply_light_postprocess(text: str, options: dict) -> str:
     """Pós-processamento leve (opcional)."""
 
+    if options.get("fix_underscores"):
+        # Remove sequências de underscores escapados (\_\_\_\_\_\_\_) usados como recuo
+        text = re.sub(r'(\\_){2,}', '', text)
+        # Remove sequências de underscores simples (___) usados como recuo
+        text = re.sub(r'_{3,}', '', text)
+        # Limpar espaços no início de linha após remoção dos underscores
+        text = re.sub(r'^[ \t]+', '', text, flags=re.MULTILINE)
+
+    if options.get("fix_heading_levels"):
+        lines = text.split("\n")
+        fixed = []
+        for line in lines:
+            stripped = line.strip()
+            # Detectar headings com numeração romana (I., II., III., IV., V., etc.)
+            # Independente do nível atual (#, ##, ###, ####), normalizar para ## (H2)
+            roman_heading = re.match(
+                r'^(#{1,6})\s+(.*?\b(?:I{1,3}|IV|V|VI{0,3}|IX|X{0,3}|XI{0,3}|XII{0,3})\b[\.\s\-–—]+.+)$',
+                stripped
+            )
+            if roman_heading:
+                content = roman_heading.group(2)
+                fixed.append(f"## {content}")
+            else:
+                fixed.append(line)
+        text = "\n".join(fixed)
+
     if options.get("fix_line_breaks"):
         preps = r"\b(de|da|do|das|dos|para|com|sob|por|no|na|nos|nas|ao|à|aos|às|em|entre|sobre|a|o|as|os|e|ou|que)\s*$"
         lines = text.split("\n")
@@ -113,6 +139,10 @@ with st.sidebar:
         help="Máximo de 2 linhas em branco consecutivas")
     fix_smart_quotes = st.checkbox("Aspas tipográficas", value=False,
         help='Converte " para \u201c \u201d')
+    fix_underscores = st.checkbox("Remover recuos (underscores)", value=True,
+        help="Remove sequências de \_\_\_\_\_\_\_ usadas como recuo em ofícios e petições")
+    fix_heading_levels = st.checkbox("Normalizar headings", value=True,
+        help="Padroniza seções numeradas (I, II, III...) para o mesmo nível de heading")
 
     st.divider()
 
@@ -174,6 +204,8 @@ options = {
     "fix_line_breaks": fix_line_breaks,
     "fix_multiple_blanks": fix_multiple_blanks,
     "fix_smart_quotes": fix_smart_quotes,
+    "fix_underscores": fix_underscores,
+    "fix_heading_levels": fix_heading_levels,
 }
 
 if any(options.values()):
