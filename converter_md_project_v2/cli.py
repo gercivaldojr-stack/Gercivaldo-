@@ -16,7 +16,7 @@ import time
 from pathlib import Path
 
 from core.config import load_config, merge_cli_into_config
-from core.pipeline import convert_batch, convert_document
+from core.pipeline import convert_document
 
 
 def _setup_logging(verbose: bool = False) -> None:
@@ -56,7 +56,8 @@ Exemplos:
     parser.add_argument(
         "--batch",
         action="store_true",
-        help="Processa todos os arquivos suportados na pasta de entrada.",
+        help="Processa todos os arquivos suportados no nivel imediato da pasta "
+             "(nao-recursivo).",
     )
     parser.add_argument(
         "--mode",
@@ -114,11 +115,9 @@ def _resolve_output(input_path: Path, output: str | None, batch: bool) -> Path:
 
 
 def _convert_single(input_path: Path, output_path: Path, cfg: dict) -> bool:
-    file_bytes = input_path.read_bytes()
-
     start = time.monotonic()
     result = convert_document(
-        file_bytes=file_bytes,
+        file_path=str(input_path),
         filename=input_path.name,
         mode=cfg.get("mode", "forense"),
         separate=cfg.get("separate", False),
@@ -158,6 +157,11 @@ def main(argv: list[str] | None = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
 
+    # Validar chunk_size
+    if args.chunk_size is not None and args.chunk_size < 1:
+        print("ERRO: --chunk-size deve ser >= 1.", file=sys.stderr)
+        return 1
+
     if args.quiet:
         _setup_logging(False)
         logging.getLogger().setLevel(logging.ERROR)
@@ -167,6 +171,11 @@ def main(argv: list[str] | None = None) -> int:
     # Carregar config
     cfg = load_config(args.config) if args.config else {}
     cfg = merge_cli_into_config(cfg, args)
+
+    # Validar chunk_size do config também
+    if cfg.get("chunk_size") is not None and cfg["chunk_size"] < 1:
+        print("ERRO: chunk_size deve ser >= 1.", file=sys.stderr)
+        return 1
 
     input_path = Path(args.input)
     if not input_path.exists():

@@ -126,7 +126,7 @@ cd converter_md_project_v2
 python -m pytest -v
 ```
 
-337 testes cobrindo todos os modulos.
+339 testes cobrindo todos os modulos.
 
 ## Arquitetura
 
@@ -143,7 +143,7 @@ converter_md_project_v2/
 │   ├── metadata.py            # Frontmatter YAML + metadados expandidos + processuais
 │   ├── pipeline.py            # Orquestrador principal
 │   └── piece_separator.py     # Separacao de pecas processuais
-├── tests/                     # 337 testes
+├── tests/                     # 339 testes
 ├── requirements.txt
 └── README.md
 ```
@@ -211,6 +211,8 @@ Documento (PDF/DOCX/TXT)
 - **Tabelas complexas**: tabelas com celulas mescladas podem perder estrutura.
 - **PDFs com layout nao-linear**: documentos com colunas multiplas podem ter ordem de leitura incorreta.
 - **Codificacao**: alguns PDFs antigos usam encodings nao-padrao que podem gerar glyphs corrompidos.
+- **Batch nao-recursivo**: o modo `--batch` processa apenas arquivos no nivel imediato da pasta informada, sem percorrer subpastas.
+- **Scan de headers/footers antes do chunking**: a deteccao de cabecalhos/rodapes (`_detect_hf_zones`) percorre todas as paginas do documento antes de iniciar o processamento em chunks. Em PDFs muito grandes, isso causa um pico de memoria inicial mesmo com `chunk_size` definido.
 
 ### Melhorias futuras sugeridas
 

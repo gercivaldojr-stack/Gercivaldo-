@@ -97,6 +97,28 @@ class TestCliMain:
         Path(input_path).unlink()
         Path(output_path).unlink(missing_ok=True)
 
+    def test_chunk_size_zero_rejected(self):
+        """chunk_size <= 0 deve retornar erro."""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
+            f.write("Texto.\n")
+            f.flush()
+            input_path = f.name
+        from cli import main
+        ret = main([input_path, "--chunk-size", "0"])
+        assert ret == 1
+        Path(input_path).unlink()
+
+    def test_chunk_size_negative_rejected(self):
+        """chunk_size negativo deve retornar erro."""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
+            f.write("Texto.\n")
+            f.flush()
+            input_path = f.name
+        from cli import main
+        ret = main([input_path, "--chunk-size", "-5"])
+        assert ret == 1
+        Path(input_path).unlink()
+
     def test_batch_mode(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             # Criar dois arquivos de teste
