@@ -56,8 +56,13 @@ python cli.py livro.pdf --mode doutrina -o livro.md
 # OCR seletivo (paginas escaneadas)
 python cli.py autos.pdf --ocr --ocr-lang por
 
-# Intervalo de paginas (PDFs grandes)
-python cli.py processo_grande.pdf --pages 10-50
+# Intervalo de paginas (1-based: pagina 1 = primeira pagina)
+python cli.py processo_grande.pdf --pages 1-50
+python cli.py processo_grande.pdf --pages 1,5,10-20
+
+# Processamento em chunks (economia de RAM para PDFs grandes)
+python cli.py processo_1000pg.pdf --chunk-size 100
+python cli.py processo_1000pg.pdf --pages 1-500 --chunk-size 50
 
 # Lote (pasta inteira)
 python cli.py ./autos/ --batch -o ./saida/
@@ -92,6 +97,8 @@ result = convert_document(
     wrap_notes=True,
     ocr_enabled=True,       # OCR seletivo
     ocr_lang="por",
+    page_range="1-100",     # paginas 1-based (None = todas)
+    chunk_size=50,          # processar 50 paginas por vez (None = tudo)
 )
 
 print(result.markdown)
@@ -119,7 +126,7 @@ cd converter_md_project_v2
 python -m pytest -v
 ```
 
-309 testes cobrindo todos os modulos.
+337 testes cobrindo todos os modulos.
 
 ## Arquitetura
 
@@ -136,7 +143,7 @@ converter_md_project_v2/
 │   ├── metadata.py            # Frontmatter YAML + metadados expandidos + processuais
 │   ├── pipeline.py            # Orquestrador principal
 │   └── piece_separator.py     # Separacao de pecas processuais
-├── tests/                     # 309 testes
+├── tests/                     # 337 testes
 ├── requirements.txt
 └── README.md
 ```
@@ -151,7 +158,8 @@ Documento (PDF/DOCX/TXT)
         |   - tabelas via find_tables()
         |   - remocao de header/footer por bbox
         |   - OCR seletivo por pagina (se habilitado)
-        |   - suporte a page_range para PDFs grandes
+        |   - page_range: selecao de paginas (1-based)
+        |   - chunk_size: processamento em lotes com liberacao de RAM
         |
    [2] clean_text()             <- cleaning.py
         |   - dehyphenation, OCR cleanup
@@ -192,6 +200,8 @@ Documento (PDF/DOCX/TXT)
 **Protecao de alineas**: alineas juridicas como `a)`, `b)`, `I —`, `1.1` sao protegidas de virar headings.
 
 **Frontmatter idempotente**: o pipeline remove qualquer frontmatter YAML pre-existente antes de gerar um novo.
+
+**Processamento em chunks**: para PDFs com centenas de paginas, o parametro `chunk_size` faz o extrator abrir e fechar o documento a cada N paginas, liberando memoria entre chunks via `gc.collect()`. Isso evita picos de RAM em maquinas com recursos limitados. O resultado e identico ao processamento sem chunks.
 
 **CLI + Config YAML**: a CLI aceita todos os parametros diretamente, mas tambem suporta arquivo YAML para presets reutilizaveis. Flags CLI tem prioridade.
 

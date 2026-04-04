@@ -13,7 +13,6 @@ import logging
 import os
 import re
 import tempfile
-from collections import Counter
 from pathlib import Path
 
 import chardet
@@ -51,8 +50,10 @@ def extract_text(
         ocr_enabled: Se True, aplica OCR seletivo em páginas com pouco texto nativo.
         ocr_lang: Idioma do Tesseract para OCR (padrão: por = português).
         ocr_threshold: Mínimo de chars para considerar página com texto suficiente.
-        page_range: Intervalo de páginas (ex: "10-50", "1,5,10-20"). Apenas para PDF.
-        chunk_size: Páginas por chunk para PDFs grandes. None = processar tudo de vez.
+        page_range: Páginas a processar, 1-based (ex: "1-50", "1,5,10-20").
+            Página 1 = primeira página. Apenas para PDF.
+        chunk_size: Páginas por chunk para PDFs grandes. Processa N páginas por
+            vez e libera memória entre chunks. None = processar tudo de uma vez.
 
     Returns:
         Texto extraído como string.
@@ -211,19 +212,64 @@ def _table_to_markdown(table) -> str:
 
 
 def _parse_page_range(spec: str, total_pages: int) -> list[int]:
-    """Converte spec como '1,5,10-20' em lista de indices (0-based)."""
+    """Converte especificação de páginas 1-based do usuário em lista 0-based.
+
+    Entrada do usuário é 1-based (página 1 = primeira página).
+    Saída é 0-based (índice 0 = primeira página) para uso interno com PyMuPDF.
+
+    Exemplos (documento com 20 páginas):
+        "1"       → [0]
+        "1-10"    → [0, 1, 2, ..., 9]
+        "1,5,10-20" → [0, 4, 9, 10, ..., 19]
+
+    Páginas fora do limite são silenciosamente ignoradas.
+    Entradas malformadas geram ValueError.
+
+    Args:
+        spec: String com páginas 1-based. Ex: "1", "1-10", "1,5,10-20".
+        total_pages: Número total de páginas do documento.
+
+    Returns:
+        Lista ordenada de índices 0-based.
+
+    Raises:
+        ValueError: Se a spec contém partes não-numéricas ou vazias.
+    """
+    if not spec or not spec.strip():
+        return list(range(total_pages))
+
     pages = set()
     for part in spec.split(","):
         part = part.strip()
+        if not part:
+            continue
         if "-" in part:
-            start, end = part.split("-", 1)
-            start = max(0, int(start))
-            end = min(int(end), total_pages - 1)
-            pages.update(range(start, end + 1))
+            pieces = part.split("-", 1)
+            try:
+                start_1 = int(pieces[0])
+                end_1 = int(pieces[1])
+            except ValueError:
+                raise ValueError(f"Intervalo de paginas invalido: '{part}'. Use formato N-M (ex: 1-10).")
+            if start_1 < 1:
+                raise ValueError(f"Pagina deve ser >= 1, recebeu {start_1}.")
+            if end_1 < start_1:
+                raise ValueError(f"Intervalo invalido: {start_1}-{end_1} (inicio > fim).")
+            # Converter 1-based para 0-based; limitar ao total
+            start_0 = start_1 - 1
+            end_0 = min(end_1 - 1, total_pages - 1)
+            if start_0 < total_pages:
+                pages.update(range(start_0, end_0 + 1))
         else:
-            p = int(part)
-            if 0 <= p < total_pages:
-                pages.add(p)
+            try:
+                p_1 = int(part)
+            except ValueError:
+                raise ValueError(f"Pagina invalida: '{part}'. Use numero inteiro (ex: 5).")
+            if p_1 < 1:
+                raise ValueError(f"Pagina deve ser >= 1, recebeu {p_1}.")
+            p_0 = p_1 - 1
+            if p_0 < total_pages:
+                pages.add(p_0)
+
     return sorted(pages)
 
 
@@ -253,6 +299,78 @@ def _ocr_page(page, lang: str = "por") -> str:
         return ""
 
 
+def _extract_single_page(page, page_idx: int, remove_set: set,
+                         ocr_enabled: bool, ocr_lang: str,
+                         ocr_threshold: int) -> tuple[str, bool]:
+    """Extrai texto de uma única página PDF.
+
+    Returns:
+        Tupla (texto_da_pagina, usou_ocr).
+    """
+    page_parts = []
+    used_ocr = False
+
+    # Tentar extrair tabelas
+    tables = []
+    table_rects = []
+    try:
+        found_tables = page.find_tables()
+        if found_tables and found_tables.tables:
+            for tbl in found_tables.tables:
+                md_table = _table_to_markdown(tbl)
+                if md_table:
+                    tables.append(md_table)
+                    table_rects.append(tbl.bbox)
+    except Exception as e:
+        logger.debug("find_tables() falhou na página %d: %s", page_idx + 1, e)
+
+    # Extrair texto via dict para controle de bbox
+    blocks = page.get_text("dict")["blocks"]
+    for blk_idx, block in enumerate(blocks):
+        if block["type"] != 0:
+            continue
+
+        if (page_idx, blk_idx) in remove_set:
+            continue
+
+        blk_bbox = block["bbox"]
+        in_table = False
+        for trect in table_rects:
+            if (blk_bbox[1] >= trect[1] - 2 and blk_bbox[3] <= trect[3] + 2
+                    and blk_bbox[0] >= trect[0] - 2 and blk_bbox[2] <= trect[2] + 2):
+                in_table = True
+                break
+        if in_table:
+            continue
+
+        block_text = ""
+        for line in block.get("lines", []):
+            line_text = ""
+            for span in line.get("spans", []):
+                line_text += span.get("text", "")
+            if line_text.strip():
+                block_text += line_text + "\n"
+
+        if block_text.strip():
+            page_parts.append(block_text.strip())
+
+    for md_table in tables:
+        page_parts.append("\n" + md_table + "\n")
+
+    page_text = "\n".join(page_parts)
+
+    # OCR seletivo: só aplica se a página tem pouco texto nativo
+    if ocr_enabled and len(page_text.strip()) < ocr_threshold:
+        logger.debug("Página %d com %d chars (< %d): aplicando OCR",
+                     page_idx + 1, len(page_text.strip()), ocr_threshold)
+        ocr_text = _ocr_page(page, lang=ocr_lang)
+        if ocr_text.strip():
+            page_text = ocr_text
+            used_ocr = True
+
+    return page_text, used_ocr
+
+
 def _extract_pdf(
     file_bytes: bytes,
     file_path: str | None = None,
@@ -263,12 +381,20 @@ def _extract_pdf(
     chunk_size: int | None = None,
     **kwargs,
 ) -> str:
-    """Extrai texto de PDF usando PyMuPDF (fitz), com:
-    - Extração de tabelas via find_tables() com fallback para texto puro
-    - Remoção de cabeçalhos/rodapés via análise de bbox
-    - OCR seletivo: só aplica OCR em páginas com menos de ocr_threshold chars
-    - Suporte a page_range e chunk_size para PDFs grandes
+    """Extrai texto de PDF usando PyMuPDF (fitz).
+
+    Funcionalidades:
+    - Extração de tabelas via find_tables() com fallback para texto puro.
+    - Remoção de cabeçalhos/rodapés via análise de bbox.
+    - OCR seletivo: só aplica OCR em páginas com menos de ocr_threshold chars.
+    - page_range: entrada 1-based do usuário (ex: "1-10") para processar
+      apenas um subconjunto de páginas.
+    - chunk_size: processa N páginas por vez, fechando e reabrindo o doc
+      entre chunks para liberar memória. Útil para PDFs com 500+ páginas
+      em máquinas com pouca RAM.
     """
+    import gc
+
     import fitz
 
     text_parts = []
@@ -287,101 +413,81 @@ def _extract_pdf(
         total_pages = len(doc)
         logger.info("PDF com %d páginas", total_pages)
 
-        # Determinar quais páginas processar
+        # Determinar quais páginas processar (entrada 1-based, saída 0-based)
         if page_range:
             pages_to_process = _parse_page_range(page_range, total_pages)
-            logger.info("Processando %d de %d páginas (range: %s)", len(pages_to_process), total_pages, page_range)
+            logger.info("Processando %d de %d páginas (range: %s)",
+                        len(pages_to_process), total_pages, page_range)
         else:
             pages_to_process = list(range(total_pages))
 
-        # P3: Detectar zonas de cabeçalho/rodapé
+        if not pages_to_process:
+            logger.warning("Nenhuma página a processar (range fora do limite?)")
+            doc.close()
+            return ""
+
+        # Detectar zonas de cabeçalho/rodapé (scan leve sobre todo o doc)
         remove_set = _detect_hf_zones(doc)
         if remove_set:
-            logger.info("Detectados %d blocos de cabeçalho/rodapé para remoção", len(remove_set))
+            logger.info("Detectados %d blocos de cabeçalho/rodapé para remoção",
+                        len(remove_set))
 
-        ocr_count = 0
-
-        for i in pages_to_process:
-            page = doc[i]
-            try:
-                page_parts = []
-
-                # P1: Tentar extrair tabelas
-                tables = []
-                table_rects = []
-                try:
-                    found_tables = page.find_tables()
-                    if found_tables and found_tables.tables:
-                        for tbl in found_tables.tables:
-                            md_table = _table_to_markdown(tbl)
-                            if md_table:
-                                tables.append(md_table)
-                                table_rects.append(tbl.bbox)
-                except Exception as e:
-                    logger.debug("find_tables() falhou na página %d: %s", i + 1, e)
-
-                # Extrair texto via dict para ter controle de bbox
-                blocks = page.get_text("dict")["blocks"]
-                for blk_idx, block in enumerate(blocks):
-                    if block["type"] != 0:
-                        continue
-
-                    # P3: Pular blocos identificados como header/footer
-                    if (i, blk_idx) in remove_set:
-                        continue
-
-                    # P1: Pular blocos que estão dentro de áreas de tabela
-                    blk_bbox = block["bbox"]
-                    in_table = False
-                    for trect in table_rects:
-                        if (blk_bbox[1] >= trect[1] - 2 and blk_bbox[3] <= trect[3] + 2
-                                and blk_bbox[0] >= trect[0] - 2 and blk_bbox[2] <= trect[2] + 2):
-                            in_table = True
-                            break
-                    if in_table:
-                        continue
-
-                    block_text = ""
-                    for line in block.get("lines", []):
-                        line_text = ""
-                        for span in line.get("spans", []):
-                            line_text += span.get("text", "")
-                        if line_text.strip():
-                            block_text += line_text + "\n"
-
-                    if block_text.strip():
-                        page_parts.append(block_text.strip())
-
-                # Inserir tabelas Markdown na saída da página
-                for md_table in tables:
-                    page_parts.append("\n" + md_table + "\n")
-
-                page_text = "\n".join(page_parts)
-
-                # OCR seletivo: se a página tem pouco texto nativo, tentar OCR
-                if ocr_enabled and len(page_text.strip()) < ocr_threshold:
-                    logger.debug("Página %d com %d chars (< %d): aplicando OCR", i + 1, len(page_text.strip()), ocr_threshold)
-                    ocr_text = _ocr_page(page, lang=ocr_lang)
-                    if ocr_text.strip():
-                        page_text = ocr_text
-                        ocr_count += 1
-
-                if page_text.strip():
-                    text_parts.append(page_text)
-
-            except Exception as e:
-                logger.warning("Erro na página %d: %s", i + 1, e)
-                try:
-                    fallback = page.get_text("text")
-                    if fallback.strip():
-                        text_parts.append(fallback)
-                except Exception:
-                    text_parts.append(f"\n[Erro ao extrair página {i + 1}]\n")
-
+        # Fechar doc antes do loop de chunks — será reaberto por chunk
+        # Isso só faz sentido se chunk_size está definido; caso contrário
+        # mantemos o doc aberto para o loop simples.
+        doc_path = file_path if (file_path and os.path.exists(file_path)) else tmp_path
         doc.close()
 
+        # ── Processamento em chunks ──
+        # Se chunk_size é None ou >= total de páginas, processa tudo de uma vez.
+        effective_chunk = chunk_size if (chunk_size and chunk_size > 0) else len(pages_to_process)
+        ocr_count = 0
+        chunks_processed = 0
+
+        for chunk_start in range(0, len(pages_to_process), effective_chunk):
+            chunk_pages = pages_to_process[chunk_start:chunk_start + effective_chunk]
+            chunks_processed += 1
+
+            if chunk_size and chunk_size > 0:
+                logger.info("Chunk %d: páginas %s (%d págs)",
+                            chunks_processed,
+                            f"{chunk_pages[0]+1}-{chunk_pages[-1]+1}",
+                            len(chunk_pages))
+
+            # Abrir doc para este chunk
+            chunk_doc = fitz.open(doc_path)
+
+            for page_idx in chunk_pages:
+                page = chunk_doc[page_idx]
+                try:
+                    page_text, used_ocr = _extract_single_page(
+                        page, page_idx, remove_set,
+                        ocr_enabled, ocr_lang, ocr_threshold,
+                    )
+                    if used_ocr:
+                        ocr_count += 1
+                    if page_text.strip():
+                        text_parts.append(page_text)
+                except Exception as e:
+                    logger.warning("Erro na página %d: %s", page_idx + 1, e)
+                    try:
+                        fallback = page.get_text("text")
+                        if fallback.strip():
+                            text_parts.append(fallback)
+                    except Exception:
+                        text_parts.append(f"\n[Erro ao extrair página {page_idx + 1}]\n")
+
+            # Fechar doc do chunk e forçar GC para liberar memória
+            chunk_doc.close()
+            if chunk_size and chunk_size > 0:
+                gc.collect()
+
         if ocr_count > 0:
-            logger.info("OCR aplicado em %d de %d páginas", ocr_count, len(pages_to_process))
+            logger.info("OCR aplicado em %d de %d páginas",
+                        ocr_count, len(pages_to_process))
+        if chunks_processed > 1:
+            logger.info("Processamento concluído em %d chunks de %d páginas",
+                        chunks_processed, chunk_size)
 
     finally:
         if tmp_path and os.path.exists(tmp_path):

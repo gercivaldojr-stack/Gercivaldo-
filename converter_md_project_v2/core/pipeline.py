@@ -140,8 +140,9 @@ def convert_document(
         ocr_enabled: Se True, aplica OCR seletivo por página.
         ocr_lang: Idioma do Tesseract (padrão: por).
         ocr_threshold: Mínimo de chars para considerar página com texto.
-        page_range: Intervalo de páginas (ex: "10-50"). Apenas PDF.
-        chunk_size: Páginas por chunk para PDFs grandes.
+        page_range: Páginas a processar, 1-based (ex: "1-50", "1,5,10-20"). Apenas PDF.
+        chunk_size: Páginas por chunk para PDFs grandes. Processa N páginas por
+            vez e libera memória entre chunks. None = processar tudo de uma vez.
 
     Returns:
         ConversionResult com o Markdown e metadados.
@@ -254,6 +255,8 @@ def convert_batch(
     ocr_enabled: bool = False,
     ocr_lang: str = "por",
     ocr_threshold: int = 30,
+    page_range: str | None = None,
+    chunk_size: int | None = None,
 ) -> list[ConversionResult]:
     """Converte múltiplos documentos em lote.
 
@@ -285,6 +288,8 @@ def convert_batch(
             ocr_enabled=ocr_enabled,
             ocr_lang=ocr_lang,
             ocr_threshold=ocr_threshold,
+            page_range=page_range,
+            chunk_size=chunk_size,
         )
         results.append(result)
 

@@ -38,7 +38,8 @@ Exemplos:
   python cli.py peticao.pdf
   python cli.py peticao.pdf -o peticao.md --mode forense --toc
   python cli.py ./autos/ --batch -o ./saida/
-  python cli.py grande.pdf --ocr --pages 10-50
+  python cli.py grande.pdf --ocr --pages 1-50
+  python cli.py grande.pdf --pages 10-100 --chunk-size 50
   python cli.py doc.pdf --config config.yaml --separate
         """,
     )
@@ -84,8 +85,13 @@ Exemplos:
 
     # Performance
     perf = parser.add_argument_group("performance")
-    perf.add_argument("--pages", default=None, help='Intervalo de paginas. Ex: "10-50", "1,5,10-20"')
-    perf.add_argument("--chunk-size", type=int, default=None, help="Paginas por chunk para PDFs grandes (padrao: auto).")
+    perf.add_argument("--pages", default=None,
+                      help='Paginas a processar (1-based). Ex: "1-10", "1,5,10-20". '
+                           'Pagina 1 = primeira pagina do documento.')
+    perf.add_argument("--chunk-size", type=int, default=None,
+                      help="Paginas por chunk para PDFs grandes. Processa N paginas por "
+                           "vez, liberando memoria entre chunks. Recomendado: 50-200 para "
+                           "PDFs com 500+ paginas em maquinas com pouca RAM.")
 
     # Config
     parser.add_argument(
@@ -97,21 +103,6 @@ Exemplos:
     parser.add_argument("--quiet", action="store_true", help="Apenas erros no log.")
 
     return parser
-
-
-def _parse_page_range(spec: str, total_pages: int) -> list[int]:
-    """Converte spec como '1,5,10-20' em lista de indices (0-based)."""
-    pages = set()
-    for part in spec.split(","):
-        part = part.strip()
-        if "-" in part:
-            start, end = part.split("-", 1)
-            start = int(start)
-            end = min(int(end), total_pages)
-            pages.update(range(start, end + 1))
-        else:
-            pages.add(int(part))
-    return sorted(p for p in pages if 0 <= p < total_pages)
 
 
 def _resolve_output(input_path: Path, output: str | None, batch: bool) -> Path:

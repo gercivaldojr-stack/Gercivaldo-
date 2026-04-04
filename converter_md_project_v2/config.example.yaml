@@ -40,9 +40,11 @@ ocr_lang: "por"
 ocr_threshold: 30
 
 # --- Performance ---
-# Intervalo de páginas (null = todas). Ex: "10-50", "1,5,10-20"
-# pages: "0-100"
+# Páginas a processar, 1-based (null = todas). Página 1 = primeira página.
+# Exemplos: "1-100", "1,5,10-50"
+# pages: "1-100"
 
-# Páginas por chunk para PDFs grandes (null = processar tudo de vez)
-# Recomendado para PDFs com 500+ páginas em máquinas com pouca RAM
+# Páginas por chunk para PDFs grandes (null = processar tudo de uma vez).
+# Processa N páginas por vez, liberando memória entre chunks.
+# Recomendado: 50-200 para PDFs com 500+ páginas em máquinas com pouca RAM.
 # chunk_size: 100
