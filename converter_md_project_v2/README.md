@@ -1,5 +1,7 @@
 # Conversor Juridico PDF/DOCX → Markdown (v5.0)
 
+[![CI - Converter Jurídico](https://github.com/gercivaldojr-stack/Gercivaldo-/actions/workflows/ci.yml/badge.svg)](https://github.com/gercivaldojr-stack/Gercivaldo-/actions/workflows/ci.yml)
+
 Converte documentos juridicos (PDF, DOCX, TXT) para Markdown limpo e estruturado, com heuristicas especificas para pecas processuais e doutrina juridica.
 
 Otimizado para rodar em maquinas sem GPU e com RAM limitada.
