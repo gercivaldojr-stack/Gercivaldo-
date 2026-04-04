@@ -78,6 +78,7 @@ def clean_text(text: str, remove_headers_footers: bool = True) -> str:
 
     text = fix_hyphenation(text)
     text = normalize_whitespace(text)
+    text = normalize_bullets(text)
     text = remove_corrupted_glyphs(text)
     text = remove_ocr_noise(text)
     text = remove_ereader_boilerplate(text)
@@ -318,6 +319,15 @@ def normalize_whitespace(text: str) -> str:
     text = re.sub(r"[ ]{2,}", " ", text)
     lines = [line.strip() for line in text.split("\n")]
     return "\n".join(lines)
+
+
+def normalize_bullets(text: str) -> str:
+    """Converte caracteres de bullet no início de linha para Markdown '- '.
+
+    Trata: •, ◦, ▪, ►, – (quando seguidos de espaço no início da linha).
+    """
+    text = re.sub(r"^[•◦▪►–]\s+", "- ", text, flags=re.MULTILINE)
+    return text
 
 
 def remove_ocr_noise(text: str) -> str:

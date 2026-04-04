@@ -514,51 +514,112 @@ def fill_heading_gaps(md: str) -> str:
         if hm:
             found.append((int(hm.group(1)), idx))
 
-    if len(found) < 2:
-        return "\n".join(lines_list)
+    if len(found) >= 2:
+        first_num = found[0][0]
+        last_num = found[-1][0]
+        existing_nums = {n for n, _ in found}
+        missing = sorted(set(range(first_num, last_num + 1)) - existing_nums)
 
-    first_num = found[0][0]
-    last_num = found[-1][0]
-    existing_nums = {n for n, _ in found}
-    missing = sorted(set(range(first_num, last_num + 1)) - existing_nums)
+        if missing:
+            logger.info("fill_heading_gaps pass2: seções faltantes detectadas: %s", missing)
 
-    if not missing:
-        return "\n".join(lines_list)
+            found_dict = {n: pos for n, pos in found}
+            insertions = []
 
-    logger.info("fill_heading_gaps pass2: seções faltantes detectadas: %s", missing)
+            for num in missing:
+                next_nums = sorted(n for n in existing_nums if n > num)
+                if not next_nums:
+                    continue
+                next_num = next_nums[0]
+                next_pos = found_dict[next_num]
 
-    found_dict = {n: pos for n, pos in found}
-    insertions = []
+                prev_num = num - 1
+                sub_re = re.compile(
+                    r"^(?:###?\s+)?\*\*" + str(prev_num) + r"\.(\d+)\.?\*\*|^(?:###?\s+)?"
+                    + str(prev_num) + r"\.(\d+)\."
+                )
+                best_pos = next_pos
 
-    for num in missing:
-        next_nums = sorted(n for n in existing_nums if n > num)
-        if not next_nums:
-            continue
-        next_num = next_nums[0]
-        next_pos = found_dict[next_num]
+                prev_pos = found_dict.get(prev_num, 0)
+                for scan in range(prev_pos, next_pos):
+                    if sub_re.match(lines_list[scan].strip()):
+                        best_pos = scan + 1
 
-        prev_num = num - 1
-        sub_re = re.compile(
-            r"^(?:###?\s+)?\*\*" + str(prev_num) + r"\.(\d+)\.?\*\*|^(?:###?\s+)?"
-            + str(prev_num) + r"\.(\d+)\."
-        )
-        best_pos = next_pos
+                while best_pos < next_pos and lines_list[best_pos].strip():
+                    best_pos += 1
 
-        prev_pos = found_dict.get(prev_num, 0)
-        for scan in range(prev_pos, next_pos):
-            if sub_re.match(lines_list[scan].strip()):
-                best_pos = scan + 1
+                heading = "## " + str(num) + ". [SEÇÃO SEM TÍTULO DETECTADO]"
+                insertions.append((best_pos, heading))
 
-        while best_pos < next_pos and lines_list[best_pos].strip():
-            best_pos += 1
+            for pos, heading in sorted(insertions, reverse=True):
+                lines_list.insert(pos, "")
+                lines_list.insert(pos + 1, heading)
+                lines_list.insert(pos + 2, "")
 
-        heading = "## " + str(num) + ". [SEÇÃO SEM TÍTULO DETECTADO]"
-        insertions.append((best_pos, heading))
+    # ── Pass 2b: detectar gaps na numeração romana ## ROMAN – TÍTULO ──
+    _ROMAN_VALUES = {'I': 1, 'V': 5, 'X': 10, 'L': 50, 'C': 100}
 
-    for pos, heading in sorted(insertions, reverse=True):
-        lines_list.insert(pos, "")
-        lines_list.insert(pos + 1, heading)
-        lines_list.insert(pos + 2, "")
+    def _roman_to_int(s):
+        """Converte numeral romano para inteiro."""
+        result = 0
+        for i, ch in enumerate(s):
+            val = _ROMAN_VALUES.get(ch, 0)
+            if i + 1 < len(s) and val < _ROMAN_VALUES.get(s[i + 1], 0):
+                result -= val
+            else:
+                result += val
+        return result
+
+    def _int_to_roman(n):
+        """Converte inteiro para numeral romano."""
+        vals = [(100, 'C'), (90, 'XC'), (50, 'L'), (40, 'XL'),
+                (10, 'X'), (9, 'IX'), (5, 'V'), (4, 'IV'), (1, 'I')]
+        result = ''
+        for v, r in vals:
+            while n >= v:
+                result += r
+                n -= v
+        return result
+
+    roman_heading_re2 = re.compile(r"^##\s+([IVXLC]+)\s*[-–—.]\s+(.+)$")
+    found_roman = []
+    for idx, ln in enumerate(lines_list):
+        rm = roman_heading_re2.match(ln)
+        if rm:
+            roman_str = rm.group(1)
+            roman_val = _roman_to_int(roman_str)
+            if roman_val > 0:
+                found_roman.append((roman_val, roman_str, idx))
+
+    if len(found_roman) >= 2:
+        first_r = found_roman[0][0]
+        last_r = found_roman[-1][0]
+        existing_r = {n for n, _, _ in found_roman}
+        missing_r = sorted(set(range(first_r, last_r + 1)) - existing_r)
+
+        if missing_r:
+            logger.info("fill_heading_gaps pass2b: seções romanas faltantes: %s", [_int_to_roman(n) for n in missing_r])
+            found_r_dict = {n: pos for n, _, pos in found_roman}
+            insertions_r = []
+
+            for num in missing_r:
+                next_nums_r = sorted(n for n in existing_r if n > num)
+                if not next_nums_r:
+                    continue
+                next_pos_r = found_r_dict[next_nums_r[0]]
+                best_pos_r = next_pos_r
+
+                while best_pos_r > 0 and not lines_list[best_pos_r - 1].strip():
+                    best_pos_r -= 1
+
+                roman_label = _int_to_roman(num)
+                heading_r = f"## {roman_label} – [SEÇÃO SEM TÍTULO DETECTADO]"
+                insertions_r.append((best_pos_r, heading_r))
+
+            for pos, heading in sorted(insertions_r, reverse=True):
+                lines_list.insert(pos, "")
+                lines_list.insert(pos + 1, heading)
+                lines_list.insert(pos + 2, "")
 
     return "\n".join(lines_list)
 
@@ -611,6 +672,12 @@ def _apply_forense(line: str) -> str:
     if FORENSE_ROMAN_H2_PATTERN.match(line.strip()) and line.strip().upper() == line.strip():
         logger.info("ROMAN_H2_FORENSE: matched '%s'", line[:60])
         return f"## {line}"
+
+    # Sub-seções com numeração romana+decimal (II.1, III.2, IV.3) → H3
+    # Padrão: [IVXLC]+\.\d+\s*[-–—.]\s+texto (linhas curtas)
+    if len(line) < 100 and re.match(r"^[IVXLC]+\.\d+\s*[-–—.]\s+\S", line.strip()):
+        logger.info("ROMAN_DECIMAL_H3_FORENSE: matched '%s'", line.strip()[:60])
+        return f"### {line}"
 
     # Ignorar itens de enumeração — nunca viram heading
     if _is_enumeration(line):
@@ -730,6 +797,10 @@ def _apply_google(line: str) -> str:
 
     # Subtópicos (3.1. texto) — somente linhas curtas
     if len(line) < 100 and _GOOGLE_NUMBERED_SUBSECTION_RE.match(line.strip()):
+        return f"**{line}**"
+
+    # Sub-seções com numeração romana+decimal (II.1, III.2) → bold
+    if len(line) < 100 and re.match(r"^[IVXLC]+\.\d+\s*[-–—.]\s+\S", line.strip()):
         return f"**{line}**"
 
     # Subseções Da/Do/Das/Dos → bold
