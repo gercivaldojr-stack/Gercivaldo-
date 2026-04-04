@@ -75,5 +75,5 @@ jobs:
 
       - name: Smoke test Docker image
         run: >
-          docker run --rm converter-juridico-test
-          python -c "from core.pipeline import convert_document; print('Import OK')"
+          docker run --rm --entrypoint python converter-juridico-test
+          -c "from core.pipeline import convert_document; print('Import OK')"
