@@ -1,5 +1,11 @@
 # Changelog
 
+## v7.1 (2026-04-05)
+
+### Novos recursos
+
+- **Detecção automática de idioma** (`core/lang_detector.py`): quando `ocr_lang="auto"`, analisa stop words + palavras jurídicas do texto nativo para detectar idioma (pt, en, es, fr, de, it) e configurar o Tesseract automaticamente. Sem dependências externas. Default continua "por" (backward compatible). Votação por amostragem de páginas para documentos inteiros. Fallback por página em workers paralelos. 15 testes novos.
+
 ## v7.0 (2026-04-05)
 
 ### Novos recursos

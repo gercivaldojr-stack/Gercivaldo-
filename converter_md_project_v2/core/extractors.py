@@ -400,6 +400,11 @@ def _extract_single_page(page, page_idx: int, remove_set: set,
     Returns:
         Tupla (texto_da_pagina, usou_ocr).
     """
+    # Fallback: se "auto" chegou aqui (ex: worker paralelo), resolver por página
+    if ocr_lang == "auto":
+        from .lang_detector import detect_language_from_page
+        ocr_lang = detect_language_from_page(page)
+
     page_parts = []
     used_ocr = False
 
@@ -560,6 +565,12 @@ def _extract_pdf(
         if remove_set:
             logger.info("Detectados %d blocos de cabeçalho/rodapé para remoção",
                         len(remove_set))
+
+        # Detectar idioma automaticamente se ocr_lang == "auto"
+        if ocr_enabled and ocr_lang == "auto":
+            from .lang_detector import detect_document_language
+            ocr_lang = detect_document_language(doc)
+            logger.info("Idioma detectado automaticamente: %s", ocr_lang)
 
         # Criar instância de OCRCache se habilitado
         ocr_cache = None
