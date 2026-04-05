@@ -68,6 +68,10 @@ python cli.py processo_grande.pdf --pages 1,5,10-20
 python cli.py processo_1000pg.pdf --chunk-size 100
 python cli.py processo_1000pg.pdf --pages 1-500 --chunk-size 50
 
+# Processamento paralelo
+python cli.py ./autos/ --batch --workers -1        # auto-detectar CPUs
+python cli.py grande.pdf --chunk-size 50 --workers 4  # chunks em paralelo
+
 # Lote (pasta inteira)
 python cli.py ./autos/ --batch -o ./saida/
 

@@ -127,6 +127,7 @@ def convert_document(
     chunk_size: int | None = None,
     detect_columns: bool = True,
     output_format: str = "md",
+    max_workers: int | None = None,
 ) -> ConversionResult:
     """Converte um documento jurídico para Markdown estruturado.
 
@@ -171,6 +172,7 @@ def convert_document(
             page_range=page_range,
             chunk_size=chunk_size,
             detect_columns=detect_columns,
+            max_workers=max_workers,
         )
 
         if not raw_text.strip():
@@ -281,16 +283,42 @@ def convert_batch(
     chunk_size: int | None = None,
     detect_columns: bool = True,
     output_format: str = "md",
+    max_workers: int | None = None,
 ) -> list[ConversionResult]:
     """Converte múltiplos documentos em lote.
 
     Args:
         files: Lista de dicts com 'file_bytes' e 'filename'.
+        max_workers: Workers paralelos. None/0 = sequencial.
         Demais args: mesmos de convert_document.
 
     Returns:
         Lista de ConversionResult.
     """
+    if max_workers and max_workers != 1 and len(files) > 1:
+        from .parallel import convert_batch_parallel
+        return convert_batch_parallel(
+            files=files,
+            max_workers=max_workers,
+            mode=mode,
+            separate=separate,
+            remove_headers_footers=remove_headers_footers,
+            detect_citations=detect_citations,
+            extract_metadata=extract_metadata,
+            extract_procedural=extract_procedural,
+            separate_enums=separate_enums,
+            wrap_notes=wrap_notes,
+            preserve_inline_formatting=preserve_inline_formatting,
+            generate_toc_flag=generate_toc_flag,
+            ocr_enabled=ocr_enabled,
+            ocr_lang=ocr_lang,
+            ocr_threshold=ocr_threshold,
+            page_range=page_range,
+            chunk_size=chunk_size,
+            detect_columns=detect_columns,
+            output_format=output_format,
+        )
+
     results = []
     total = len(files)
 
@@ -316,6 +344,7 @@ def convert_batch(
             chunk_size=chunk_size,
             detect_columns=detect_columns,
             output_format=output_format,
+            max_workers=max_workers,
         )
         results.append(result)
 

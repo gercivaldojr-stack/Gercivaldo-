@@ -100,6 +100,10 @@ Exemplos:
     perf.add_argument("--pages", default=None,
                       help='Paginas a processar (1-based). Ex: "1-10", "1,5,10-20". '
                            'Pagina 1 = primeira pagina do documento.')
+    perf.add_argument("--workers", type=int, default=None,
+                      help="Workers para processamento paralelo. "
+                           "0 = sequencial (padrao). -1 = auto (detectar CPUs). "
+                           "Aplica-se a --batch e chunks de PDFs grandes.")
     perf.add_argument("--chunk-size", type=int, default=None,
                       help="Paginas por chunk para PDFs grandes. Processa N paginas por "
                            "vez, liberando memoria entre chunks. Recomendado: 50-200 para "
@@ -146,6 +150,7 @@ def _convert_single(input_path: Path, output_path: Path, cfg: dict) -> bool:
         chunk_size=cfg.get("chunk_size"),
         detect_columns=cfg.get("detect_columns", True),
         output_format=cfg.get("output_format", "md"),
+        max_workers=cfg.get("max_workers"),
     )
     elapsed = time.monotonic() - start
 
