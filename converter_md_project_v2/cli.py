@@ -46,7 +46,10 @@ Exemplos:
 
     parser.add_argument(
         "input",
-        help="Arquivo PDF/DOCX/TXT ou pasta (com --batch).",
+        nargs="?",
+        default=None,
+        help="Arquivo PDF/DOCX/TXT ou pasta (com --batch). "
+             "Opcional para --ocr-cache-stats e --ocr-cache-clear.",
     )
     parser.add_argument(
         "-o", "--output",
@@ -220,6 +223,10 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Entradas: {s['total_entries']}")
         print(f"Tamanho: {s['total_size_bytes']:,} bytes")
         return 0
+
+    # Validar que input foi fornecido para operações normais
+    if args.input is None:
+        parser.error("argumento 'input' é obrigatório (exceto para --ocr-cache-stats / --ocr-cache-clear).")
 
     # Validar chunk_size
     if args.chunk_size is not None and args.chunk_size < 1:
