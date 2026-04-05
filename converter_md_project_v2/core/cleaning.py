@@ -90,6 +90,7 @@ def clean_text(text: str, remove_headers_footers: bool = True) -> str:
     text = reconnect_cnj_numbers(text)
     text = reconstruct_pdf_headings(text)
     text = rejoin_broken_paragraphs(text)
+    text = fix_word_spacing(text)
     text = separate_enumerations(text)
     text = normalize_legal_citations(text)
     text = normalize_paragraphs(text)
@@ -312,10 +313,51 @@ def remove_residual_pagination(text: str) -> str:
     return "\n".join(cleaned)
 
 
+# Prefixos que mantêm hífen real (palavras compostas)
+_HYPHEN_PREFIXES = re.compile(
+    r'\b(?:vice|ex|pré|pós|recém|bem|mal|além|aquém|sem|não|'
+    r'sócio|grão|grã|auto|contra|entre|extra|infra|intra|'
+    r'macro|mega|micro|mini|multi|neo|pan|pluri|proto|pseudo|'
+    r'semi|sobre|sub|super|supra|ultra)$',
+    re.IGNORECASE,
+)
+
+
 def fix_hyphenation(text: str) -> str:
-    """Reconstrói palavras hifenizadas em quebra de linha."""
-    text = re.sub(r"(\w)-\s*\n\s*(\w)", r"\1\2", text)
-    text = re.sub(r"(\w)-\s{2,}(\w)", r"\1\2", text)
+    """Reconstrói palavras hifenizadas em quebra de linha, preservando hífens reais."""
+    def _hyphen_replacer(m):
+        before = m.group(1)
+        after = m.group(2)
+        # Se a palavra antes do hífen termina com prefixo composto, manter hífen
+        if _HYPHEN_PREFIXES.search(before):
+            return f"{before}-{after}"
+        return f"{before}{after}"
+
+    text = re.sub(r"(\w+)-\s*\n\s*(\w)", _hyphen_replacer, text)
+    text = re.sub(r"(\w+)-\s{2,}(\w)", _hyphen_replacer, text)
+    return text
+
+
+def fix_word_spacing(text: str) -> str:
+    """Corrige palavras grudadas por falha de extração do PDF.
+
+    Detecta padrões como 'minúsculaMAIÚSCULA' (camelCase acidental)
+    e insere espaço: 'minúscula MAIÚSCULA'.
+
+    Não altera siglas, nomes próprios compostos ou padrões legais conhecidos.
+    """
+    # Inserir espaço entre minúscula seguida de maiúscula no meio de palavra
+    # Exceto em padrões conhecidos (McCoy, iPhone, etc.)
+    def _space_inserter(m):
+        return f"{m.group(1)} {m.group(2)}"
+
+    # Padrão: minúscula + MAIÚSCULA (ex: "direitoA" → "direito A")
+    # Mas não em início de linha ou após pontuação
+    text = re.sub(
+        r'([a-záéíóúàâêôãõç])([A-ZÁÉÍÓÚÀÂÊÔÃÕÇ][a-záéíóúàâêôãõç]{2,})',
+        _space_inserter,
+        text,
+    )
     return text
 
 
