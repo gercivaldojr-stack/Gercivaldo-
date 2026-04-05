@@ -5,7 +5,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from core.legal_heuristics import (
+from core.legal_heuristics import (  # noqa: E402
     apply_legal_heuristics,
     detect_blockquotes,
     fill_heading_gaps,
@@ -141,7 +141,10 @@ class TestForenseMode:
 
     def test_long_da_line_not_heading(self):
         """Linhas longas com Da/Do não são subseções, são parágrafos."""
-        text = "Da análise dos documentos juntados aos autos, verifica-se que o réu não comprovou suas alegações de forma satisfatória perante o juízo"
+        text = (
+            "Da análise dos documentos juntados aos autos, verifica-se que o réu "
+            "não comprovou suas alegações de forma satisfatória perante o juízo"
+        )
         result = apply_legal_heuristics(text, mode="forense")
         assert not result.startswith("#")
 
@@ -254,7 +257,7 @@ class TestForenseNumberedSections:
         """H2 NÃO deve ser promovido a H1 mesmo sem H1 no documento."""
         text = "DOS FATOS\n\nTexto.\n\nDOS PEDIDOS\n\nTexto."
         result = apply_legal_heuristics(text, mode="forense")
-        lines = [l for l in result.split("\n") if l.strip().startswith("#")]
+        lines = [ln for ln in result.split("\n") if ln.strip().startswith("#")]
         for line in lines:
             assert line.strip().startswith("## ")
             assert not line.strip().startswith("# ") or line.strip().startswith("## ")
@@ -429,7 +432,10 @@ class TestGenerateToc:
 
     def test_toc_slug_truncation(self):
         """Slugs longos devem ser truncados para manter âncoras razoáveis."""
-        long_title = "Do constrangimento ilegal por excesso de prazo na formação da culpa e demora injustificada no julgamento"
+        long_title = (
+            "Do constrangimento ilegal por excesso de prazo na "
+            "formação da culpa e demora injustificada no julgamento"
+        )
         text = f"# Título\n\n## {long_title}\n\nTexto."
         toc = generate_toc(text)
         # O slug deve estar truncado (< 65 chars)
@@ -912,6 +918,5 @@ class TestTocRomanGaps:
             "## V – DOS PEDIDOS\n\nTexto.\n\n"
             "## VI – CONCLUSÃO\n\nTexto."
         )
-        from core.legal_heuristics import fill_heading_gaps
         result = fill_heading_gaps(text)
         assert "## IV" in result

@@ -5,7 +5,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from core.metadata import extract_procedural_metadata, generate_frontmatter
+from core.metadata import extract_procedural_metadata, generate_frontmatter  # noqa: E402
 
 
 class TestGenerateFrontmatter:
