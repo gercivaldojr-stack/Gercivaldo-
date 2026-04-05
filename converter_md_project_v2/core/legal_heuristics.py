@@ -711,6 +711,13 @@ def _apply_forense(line: str) -> str:
     return line
 
 
+_DOUTRINA_BODY_VERBS = re.compile(
+    r'\b(?:é|são|foi|está|pode|deve|tem|há|não|já|se|como|quando|que|para|'
+    r'sendo|tendo|será|seria|foram|estava)\b',
+    re.IGNORECASE,
+)
+
+
 def _apply_doutrina(line: str) -> str:
     """Aplica padrões de doutrina a uma linha."""
     upper_line = line.upper().strip()
@@ -721,6 +728,16 @@ def _apply_doutrina(line: str) -> str:
 
     for pattern in DOUTRINA_H2_PATTERNS:
         if re.match(pattern, upper_line, re.IGNORECASE):
+            # Filtro: linhas longas são corpo de texto, não título
+            if len(line) > 120:
+                return line
+            # Filtro: se não é predominantemente MAIÚSCULAS, provavelmente é corpo
+            upper_count = sum(1 for c in line if c.isupper())
+            alpha_count = sum(1 for c in line if c.isalpha())
+            if alpha_count > 0 and upper_count / alpha_count < 0.5:
+                # Verificar se contém verbos conjugados (indica corpo de texto)
+                if _DOUTRINA_BODY_VERBS.search(line):
+                    return line
             return f"## {line}"
 
     for pattern in DOUTRINA_H3_PATTERNS:
