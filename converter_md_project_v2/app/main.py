@@ -224,7 +224,7 @@ with st.sidebar:
 
     chunk_size_input = st.number_input(
         "Chunk size (páginas por lote)",
-        min_value=1,
+        min_value=0,
         max_value=10000,
         value=0,
         help="Processa N páginas por vez, liberando memória entre lotes. "
