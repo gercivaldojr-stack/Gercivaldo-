@@ -38,7 +38,8 @@ output_format: "md"
 # Habilitar OCR seletivo (requer pytesseract + Tesseract instalado)
 ocr: false
 
-# Idioma do Tesseract (por = português, eng = inglês)
+# Idioma do Tesseract (por = português, eng = inglês, auto = detectar)
+# "auto" analisa stop words do texto nativo para detectar idioma
 ocr_lang: "por"
 
 # Mínimo de caracteres para considerar página com texto suficiente

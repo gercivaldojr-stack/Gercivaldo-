@@ -165,10 +165,11 @@ with st.sidebar:
 
     ocr_lang = st.selectbox(
         "Idioma do OCR",
-        options=["por", "eng", "spa"],
-        index=0,
+        options=["auto", "por", "eng", "spa", "fra", "deu", "ita"],
+        index=1,
         disabled=not ocr_enabled,
-        help="Idioma do Tesseract: por (português), eng (inglês), spa (espanhol).",
+        help="auto: detecta automaticamente. "
+             "por (português), eng (inglês), spa (espanhol), etc.",
     )
 
     ocr_threshold = st.number_input(

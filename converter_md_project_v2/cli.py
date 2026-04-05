@@ -89,7 +89,11 @@ Exemplos:
     # OCR
     ocr = parser.add_argument_group("OCR")
     ocr.add_argument("--ocr", action="store_true", help="Habilitar OCR seletivo por pagina (requer pytesseract).")
-    ocr.add_argument("--ocr-lang", default="por", help="Idioma do Tesseract (padrao: por).")
+    ocr.add_argument(
+        "--ocr-lang", default="por",
+        help="Idioma do Tesseract (padrao: por). "
+             "Use 'auto' para deteccao automatica.",
+    )
     ocr.add_argument(
         "--ocr-threshold", type=int, default=30,
         help="Chars minimos para considerar pagina com texto (padrao: 30).",

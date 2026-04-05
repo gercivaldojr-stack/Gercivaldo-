@@ -171,6 +171,12 @@ def _process_chunk_worker(kwargs: dict) -> dict:
     ocr_count = 0
 
     doc = fitz.open(doc_path)
+
+    # Resolver "auto" no contexto do worker
+    if ocr_lang == "auto":
+        from core.lang_detector import detect_document_language
+        ocr_lang = detect_document_language(doc)
+
     for page_idx in chunk_pages:
         page = doc[page_idx]
         try:
