@@ -1,5 +1,11 @@
 # Changelog
 
+## v7.0 (2026-04-05)
+
+### Novos recursos
+
+- **Cache de OCR** (`core/ocr_cache.py`): salva resultados OCR em disco (JSON) por hash SHA256 do conteúdo visual da página + idioma. Evita re-processamento ao converter o mesmo PDF múltiplas vezes. Cache compartilhável entre workers paralelos (baseado em arquivos). CLI: `--ocr-cache`, `--ocr-cache-dir`, `--ocr-cache-clear`, `--ocr-cache-stats`. Streamlit: checkbox na seção OCR. 10 testes novos.
+
 ## v6.0 (2026-04-05)
 
 ### Novos recursos

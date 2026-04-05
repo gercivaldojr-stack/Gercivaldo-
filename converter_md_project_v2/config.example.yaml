@@ -45,6 +45,11 @@ ocr_lang: "por"
 # Páginas com menos chars que isso receberão OCR
 ocr_threshold: 30
 
+# Cache de OCR — salva resultados em disco para evitar re-processamento
+ocr_cache: false
+# Diretório do cache (null = ~/.cache/conversor-juridico/ocr)
+# ocr_cache_dir: "/tmp/ocr-cache"
+
 # --- Performance ---
 # Páginas a processar, 1-based (null = todas). Página 1 = primeira página.
 # Exemplos: "1-100", "1,5,10-50"

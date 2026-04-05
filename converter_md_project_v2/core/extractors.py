@@ -41,6 +41,8 @@ def extract_text(
     chunk_size: int | None = None,
     detect_columns: bool = True,
     max_workers: int | None = None,
+    ocr_cache_enabled: bool = False,
+    ocr_cache_dir: str | None = None,
 ) -> str:
     """Extrai texto de um arquivo com base na extensão.
 
@@ -89,6 +91,8 @@ def extract_text(
                 chunk_size=chunk_size,
                 detect_columns=detect_columns,
                 max_workers=max_workers,
+                ocr_cache_enabled=ocr_cache_enabled,
+                ocr_cache_dir=ocr_cache_dir,
             )
 
         if file_bytes is not None:
@@ -374,10 +378,23 @@ def _ocr_page(page, lang: str = "por") -> str:
         return ""
 
 
+def _get_ocr_cached(page, lang: str, ocr_cache) -> str:
+    """OCR com cache: tenta cache primeiro, senão chama _ocr_page e salva."""
+    if ocr_cache is not None:
+        cached = ocr_cache.get(page, lang)
+        if cached is not None:
+            return cached
+    text = _ocr_page(page, lang=lang)
+    if ocr_cache is not None and text:
+        ocr_cache.put(page, lang, text)
+    return text
+
+
 def _extract_single_page(page, page_idx: int, remove_set: set,
                          ocr_enabled: bool, ocr_lang: str,
                          ocr_threshold: int,
-                         detect_columns: bool = True) -> tuple[str, bool]:
+                         detect_columns: bool = True,
+                         ocr_cache=None) -> tuple[str, bool]:
     """Extrai texto de uma única página PDF.
 
     Returns:
@@ -410,8 +427,10 @@ def _extract_single_page(page, page_idx: int, remove_set: set,
         if _is_two_column_layout(text_blocks, page.rect.width):
             page_text = detect_and_reorder_columns(page)
             if ocr_enabled and len(page_text.strip()) < ocr_threshold:
-                ocr_text = _ocr_page(page, lang=ocr_lang)
-                if ocr_text.strip():
+                ocr_text = _get_ocr_cached(
+                    page, ocr_lang, ocr_cache
+                )
+                if ocr_text and ocr_text.strip():
                     page_text = ocr_text
                     used_ocr = True
             return page_text, used_ocr
@@ -469,8 +488,8 @@ def _extract_single_page(page, page_idx: int, remove_set: set,
     if ocr_enabled and len(page_text.strip()) < ocr_threshold:
         logger.debug("Página %d com %d chars (< %d): aplicando OCR",
                      page_idx + 1, len(page_text.strip()), ocr_threshold)
-        ocr_text = _ocr_page(page, lang=ocr_lang)
-        if ocr_text.strip():
+        ocr_text = _get_ocr_cached(page, ocr_lang, ocr_cache)
+        if ocr_text and ocr_text.strip():
             page_text = ocr_text
             used_ocr = True
 
@@ -487,6 +506,8 @@ def _extract_pdf(
     chunk_size: int | None = None,
     detect_columns: bool = True,
     max_workers: int | None = None,
+    ocr_cache_enabled: bool = False,
+    ocr_cache_dir: str | None = None,
     **kwargs,
 ) -> str:
     """Extrai texto de PDF usando PyMuPDF (fitz).
@@ -540,6 +561,14 @@ def _extract_pdf(
             logger.info("Detectados %d blocos de cabeçalho/rodapé para remoção",
                         len(remove_set))
 
+        # Criar instância de OCRCache se habilitado
+        ocr_cache = None
+        if ocr_enabled and ocr_cache_enabled:
+            from .ocr_cache import OCRCache
+            ocr_cache = OCRCache(
+                cache_dir=ocr_cache_dir, enabled=True
+            )
+
         # Fechar doc antes do loop de chunks — será reaberto por chunk
         # Isso só faz sentido se chunk_size está definido; caso contrário
         # mantemos o doc aberto para o loop simples.
@@ -563,6 +592,8 @@ def _extract_pdf(
                 ocr_threshold=ocr_threshold,
                 detect_columns=detect_columns,
                 max_workers=max_workers,
+                ocr_cache_enabled=ocr_cache_enabled,
+                ocr_cache_dir=ocr_cache_dir,
             )
             if par_result is not None:
                 if par_ocr > 0:
@@ -601,6 +632,7 @@ def _extract_pdf(
                         page, page_idx, remove_set,
                         ocr_enabled, ocr_lang, ocr_threshold,
                         detect_columns=detect_columns,
+                        ocr_cache=ocr_cache,
                     )
                     if used_ocr:
                         ocr_count += 1

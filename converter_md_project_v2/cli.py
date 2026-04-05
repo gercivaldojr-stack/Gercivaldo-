@@ -94,6 +94,23 @@ Exemplos:
         "--ocr-threshold", type=int, default=30,
         help="Chars minimos para considerar pagina com texto (padrao: 30).",
     )
+    ocr.add_argument(
+        "--ocr-cache", action="store_true",
+        help="Habilitar cache de OCR em disco.",
+    )
+    ocr.add_argument(
+        "--ocr-cache-dir", default=None,
+        help="Diretorio do cache OCR "
+             "(padrao: ~/.cache/conversor-juridico/ocr).",
+    )
+    ocr.add_argument(
+        "--ocr-cache-clear", action="store_true",
+        help="Limpar cache de OCR e sair.",
+    )
+    ocr.add_argument(
+        "--ocr-cache-stats", action="store_true",
+        help="Mostrar estatisticas do cache e sair.",
+    )
 
     # Performance
     perf = parser.add_argument_group("performance")
@@ -151,6 +168,8 @@ def _convert_single(input_path: Path, output_path: Path, cfg: dict) -> bool:
         detect_columns=cfg.get("detect_columns", True),
         output_format=cfg.get("output_format", "md"),
         max_workers=cfg.get("max_workers"),
+        ocr_cache_enabled=cfg.get("ocr_cache", False),
+        ocr_cache_dir=cfg.get("ocr_cache_dir"),
     )
     elapsed = time.monotonic() - start
 
@@ -182,6 +201,21 @@ def _convert_single(input_path: Path, output_path: Path, cfg: dict) -> bool:
 def main(argv: list[str] | None = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
+
+    # Ações especiais de cache (executam e saem)
+    if getattr(args, "ocr_cache_clear", False):
+        from core.ocr_cache import OCRCache
+        cache = OCRCache(cache_dir=args.ocr_cache_dir)
+        n = cache.clear()
+        print(f"Cache limpo: {n} entradas removidas.")
+        return 0
+    if getattr(args, "ocr_cache_stats", False):
+        from core.ocr_cache import OCRCache
+        cache = OCRCache(cache_dir=args.ocr_cache_dir)
+        s = cache.stats()
+        print(f"Entradas: {s['total_entries']}")
+        print(f"Tamanho: {s['total_size_bytes']:,} bytes")
+        return 0
 
     # Validar chunk_size
     if args.chunk_size is not None and args.chunk_size < 1:

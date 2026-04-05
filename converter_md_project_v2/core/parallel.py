@@ -158,6 +158,14 @@ def _process_chunk_worker(kwargs: dict) -> dict:
     ocr_lang = kwargs.get("ocr_lang", "por")
     ocr_threshold = kwargs.get("ocr_threshold", 30)
     detect_columns = kwargs.get("detect_columns", True)
+    ocr_cache_enabled = kwargs.get("ocr_cache_enabled", False)
+    ocr_cache_dir = kwargs.get("ocr_cache_dir")
+
+    # Cada worker cria sua instância — compartilham diretório em disco
+    ocr_cache = None
+    if ocr_enabled and ocr_cache_enabled:
+        from core.ocr_cache import OCRCache
+        ocr_cache = OCRCache(cache_dir=ocr_cache_dir, enabled=True)
 
     text_parts = []
     ocr_count = 0
@@ -170,6 +178,7 @@ def _process_chunk_worker(kwargs: dict) -> dict:
                 page, page_idx, remove_set,
                 ocr_enabled, ocr_lang, ocr_threshold,
                 detect_columns=detect_columns,
+                ocr_cache=ocr_cache,
             )
             if used_ocr:
                 ocr_count += 1
@@ -202,6 +211,8 @@ def process_pdf_chunks_parallel(
     ocr_threshold: int = 30,
     detect_columns: bool = True,
     max_workers: int | None = None,
+    ocr_cache_enabled: bool = False,
+    ocr_cache_dir: str | None = None,
 ) -> tuple[list[str], int]:
     """Processa chunks de PDF em paralelo.
 
@@ -238,6 +249,8 @@ def process_pdf_chunks_parallel(
             "ocr_lang": ocr_lang,
             "ocr_threshold": ocr_threshold,
             "detect_columns": detect_columns,
+            "ocr_cache_enabled": ocr_cache_enabled,
+            "ocr_cache_dir": str(ocr_cache_dir) if ocr_cache_dir else None,
         })
 
     results = [None] * len(tasks)
