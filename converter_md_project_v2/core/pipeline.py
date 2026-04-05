@@ -128,6 +128,8 @@ def convert_document(
     detect_columns: bool = True,
     output_format: str = "md",
     max_workers: int | None = None,
+    ocr_cache_enabled: bool = False,
+    ocr_cache_dir: str | None = None,
 ) -> ConversionResult:
     """Converte um documento jurídico para Markdown estruturado.
 
@@ -173,6 +175,8 @@ def convert_document(
             chunk_size=chunk_size,
             detect_columns=detect_columns,
             max_workers=max_workers,
+            ocr_cache_enabled=ocr_cache_enabled,
+            ocr_cache_dir=ocr_cache_dir,
         )
 
         if not raw_text.strip():

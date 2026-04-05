@@ -180,6 +180,14 @@ with st.sidebar:
         help="Páginas com menos caracteres que este valor receberão OCR.",
     )
 
+    ocr_cache_enabled = st.checkbox(
+        "Habilitar cache de OCR",
+        value=False,
+        disabled=not ocr_enabled,
+        help="Salva resultados OCR em disco para evitar re-processamento. "
+             "Útil ao processar o mesmo PDF múltiplas vezes.",
+    )
+
     # ── Layout e formato ──
     st.divider()
     st.subheader("Layout e formato")
@@ -282,6 +290,7 @@ if uploaded_files:
                 detect_columns=detect_columns_opt and is_pdf,
                 output_format=output_format_key,
                 max_workers=workers_val,
+                ocr_cache_enabled=ocr_cache_enabled and is_pdf,
             )
             results.append(result)
 

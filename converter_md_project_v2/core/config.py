@@ -30,6 +30,8 @@ DEFAULTS = {
     "detect_columns": True,
     "output_format": "md",
     "max_workers": None,
+    "ocr_cache": False,
+    "ocr_cache_dir": None,
 }
 
 
@@ -105,6 +107,10 @@ def merge_cli_into_config(cfg: dict, args) -> dict:
         result["detect_columns"] = True
     if hasattr(args, "output_format") and args.output_format is not None:
         result["output_format"] = args.output_format
+    if hasattr(args, "ocr_cache") and args.ocr_cache:
+        result["ocr_cache"] = True
+    if hasattr(args, "ocr_cache_dir") and args.ocr_cache_dir:
+        result["ocr_cache_dir"] = args.ocr_cache_dir
     if hasattr(args, "workers") and args.workers is not None:
         w = args.workers
         if w == 0:

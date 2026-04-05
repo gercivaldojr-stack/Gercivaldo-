@@ -60,6 +60,11 @@ python cli.py livro.pdf --mode doutrina -o livro.md
 # OCR seletivo (paginas escaneadas)
 python cli.py autos.pdf --ocr --ocr-lang por
 
+# OCR com cache (evita re-processar)
+python cli.py autos.pdf --ocr --ocr-cache
+python cli.py --ocr-cache-stats   # estatisticas do cache
+python cli.py --ocr-cache-clear   # limpar cache
+
 # Intervalo de paginas (1-based: pagina 1 = primeira pagina)
 python cli.py processo_grande.pdf --pages 1-50
 python cli.py processo_grande.pdf --pages 1,5,10-20
