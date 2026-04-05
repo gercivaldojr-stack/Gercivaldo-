@@ -79,6 +79,26 @@ class TestCliMain:
         ret = main(["nonexistent_file.pdf"])
         assert ret == 1
 
+    def test_help_returns_zero(self):
+        """--help deve retornar 0 (SystemExit)."""
+        import pytest
+        from cli import main
+        with pytest.raises(SystemExit) as exc_info:
+            main(["--help"])
+        assert exc_info.value.code == 0
+
+    def test_cache_stats_without_input(self):
+        """--ocr-cache-stats deve funcionar sem argumento posicional."""
+        from cli import main
+        ret = main(["--ocr-cache-stats"])
+        assert ret == 0
+
+    def test_cache_clear_without_input(self):
+        """--ocr-cache-clear deve funcionar sem argumento posicional."""
+        from cli import main
+        ret = main(["--ocr-cache-clear"])
+        assert ret == 0
+
     def test_converts_txt_file(self):
         with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
             f.write("PETIÇÃO INICIAL\n\nDOS FATOS\n\nTexto de teste.\n")
