@@ -40,6 +40,7 @@ def extract_text(
     page_range: str | None = None,
     chunk_size: int | None = None,
     detect_columns: bool = True,
+    max_workers: int | None = None,
 ) -> str:
     """Extrai texto de um arquivo com base na extensão.
 
@@ -87,6 +88,7 @@ def extract_text(
                 page_range=page_range,
                 chunk_size=chunk_size,
                 detect_columns=detect_columns,
+                max_workers=max_workers,
             )
 
         if file_bytes is not None:
@@ -109,8 +111,18 @@ def _is_footer_text(text: str) -> bool:
     return any(p.search(text) for p in _FOOTER_PATTERNS)
 
 
-def _detect_hf_zones(doc) -> set[tuple[int, int]]:
-    """Detecta zonas de cabeçalho/rodapé analisando posições y repetidas.
+def _detect_hf_zones(doc, sample_pages: int = 50) -> set[tuple[int, int]]:
+    """Detecta zonas de cabeçalho/rodapé por AMOSTRAGEM.
+
+    Em vez de escanear TODAS as páginas, faz amostragem inteligente:
+    * Se doc tem <= sample_pages páginas: escaneia todas
+    * Se doc tem > sample_pages: amostra uniformemente sample_pages páginas
+      (primeiras 10 + últimas 10 + N uniformemente do meio)
+    * Usa threshold proporcional à amostra (50% das páginas amostradas)
+    * Após identificar padrões na amostra, aplica a todas as páginas
+      de forma streaming (uma página por vez, liberando memória)
+
+    Isso reduz memória de O(N*page_size) para O(sample*page_size).
 
     Retorna set de (page_index, block_index) a remover.
     """
@@ -118,28 +130,43 @@ def _detect_hf_zones(doc) -> set[tuple[int, int]]:
     if total_pages < 3:
         return set()
 
-    # Coletar y-positions arredondadas de cada bloco de texto por página
-    # key = y_rounded, value = list of (page_idx, block_idx, text)
+    # Determinar páginas a amostrar
+    if total_pages <= sample_pages:
+        sampled_indices = list(range(total_pages))
+    else:
+        head = list(range(min(10, total_pages)))
+        tail = list(range(max(total_pages - 10, 0), total_pages))
+        middle_count = sample_pages - len(head) - len(tail)
+        if middle_count > 0:
+            step = (total_pages - 20) / (middle_count + 1)
+            middle = [int(10 + step * (i + 1)) for i in range(middle_count)]
+        else:
+            middle = []
+        sampled_indices = sorted(set(head + middle + tail))
+        logger.debug(
+            "hf_zones: amostrando %d de %d páginas",
+            len(sampled_indices), total_pages,
+        )
+
+    # Fase 1: Coletar y-positions APENAS das páginas amostradas
     y_positions: dict[int, list[tuple[int, int, str]]] = {}
 
-    for page_idx in range(total_pages):
+    for page_idx in sampled_indices:
         page = doc[page_idx]
         page_height = page.rect.height
         blocks = page.get_text("dict")["blocks"]
         for blk_idx, block in enumerate(blocks):
-            if block["type"] != 0:  # apenas texto
+            if block["type"] != 0:
                 continue
             bbox = block["bbox"]
             y_top = bbox[1]
             y_bottom = bbox[3]
 
-            # Só considerar zonas de margem (topo 12% ou rodapé 12% da página)
             in_header_zone = y_top < page_height * 0.12
             in_footer_zone = y_bottom > page_height * 0.88
             if not in_header_zone and not in_footer_zone:
                 continue
 
-            # Extrair texto do bloco
             block_text = ""
             for line in block.get("lines", []):
                 for span in line.get("spans", []):
@@ -148,23 +175,69 @@ def _detect_hf_zones(doc) -> set[tuple[int, int]]:
             if not block_text:
                 continue
 
-            # Arredondar y para agrupar blocos na mesma posição
             y_key = round(y_top / 5) * 5
-            y_positions.setdefault(y_key, []).append((page_idx, blk_idx, block_text))
+            y_positions.setdefault(y_key, []).append(
+                (page_idx, blk_idx, block_text)
+            )
+        del blocks
 
-    # Identificar y-positions que aparecem em >=50% das páginas
-    remove_set: set[tuple[int, int]] = set()
-    threshold = total_pages * 0.5
+    # Fase 2: Identificar padrões com threshold proporcional à amostra
+    threshold = len(sampled_indices) * 0.5
+    final_remove_set: set[tuple[int, int]] = set()
+    identified_y_keys: set[int] = set()
 
     for y_key, entries in y_positions.items():
         pages_with_this_y = {e[0] for e in entries}
         if len(pages_with_this_y) >= threshold:
+            identified_y_keys.add(y_key)
             for page_idx, blk_idx, text in entries:
-                remove_set.add((page_idx, blk_idx))
-                logger.debug("Removendo bloco hf: página %d, y=%d, text='%s'", page_idx, y_key, text[:50])
+                final_remove_set.add((page_idx, blk_idx))
+                logger.debug(
+                    "Removendo bloco hf: página %d, y=%d, text='%s'",
+                    page_idx, y_key, text[:50],
+                )
 
-    # Também remover blocos com padrões de rodapé mesmo sem repetição de y
-    for page_idx in range(total_pages):
+    # Fase 3: Aplicar padrões a páginas NÃO amostradas (streaming)
+    sampled_set = set(sampled_indices)
+    if identified_y_keys:
+        for page_idx in range(total_pages):
+            if page_idx in sampled_set:
+                continue
+            page = doc[page_idx]
+            page_height = page.rect.height
+            blocks = page.get_text("dict")["blocks"]
+            for blk_idx, block in enumerate(blocks):
+                if block["type"] != 0:
+                    continue
+                bbox = block["bbox"]
+                y_top = bbox[1]
+                y_bottom = bbox[3]
+
+                in_header_zone = y_top < page_height * 0.12
+                in_footer_zone = y_bottom > page_height * 0.88
+                if not in_header_zone and not in_footer_zone:
+                    continue
+
+                y_key = round(y_top / 5) * 5
+                if y_key in identified_y_keys:
+                    final_remove_set.add((page_idx, blk_idx))
+
+                # Também verificar padrões de rodapé por regex
+                block_text = ""
+                for line in block.get("lines", []):
+                    for span in line.get("spans", []):
+                        block_text += span.get("text", "")
+                block_text = block_text.strip()
+                if (
+                    block_text
+                    and _is_footer_text(block_text)
+                    and y_bottom > page_height * 0.85
+                ):
+                    final_remove_set.add((page_idx, blk_idx))
+            del blocks
+
+    # Footer regex para páginas amostradas também
+    for page_idx in sampled_indices:
         page = doc[page_idx]
         page_height = page.rect.height
         blocks = page.get_text("dict")["blocks"]
@@ -173,7 +246,6 @@ def _detect_hf_zones(doc) -> set[tuple[int, int]]:
                 continue
             bbox = block["bbox"]
             y_bottom = bbox[3]
-            # Apenas em zona de rodapé
             if y_bottom <= page_height * 0.85:
                 continue
             block_text = ""
@@ -182,9 +254,10 @@ def _detect_hf_zones(doc) -> set[tuple[int, int]]:
                     block_text += span.get("text", "")
             block_text = block_text.strip()
             if block_text and _is_footer_text(block_text):
-                remove_set.add((page_idx, blk_idx))
+                final_remove_set.add((page_idx, blk_idx))
+        del blocks
 
-    return remove_set
+    return final_remove_set
 
 
 def _table_to_markdown(table) -> str:
@@ -413,6 +486,7 @@ def _extract_pdf(
     page_range: str | None = None,
     chunk_size: int | None = None,
     detect_columns: bool = True,
+    max_workers: int | None = None,
     **kwargs,
 ) -> str:
     """Extrai texto de PDF usando PyMuPDF (fitz).
@@ -472,9 +546,38 @@ def _extract_pdf(
         doc_path = file_path if (file_path and os.path.exists(file_path)) else tmp_path
         doc.close()
 
-        # ── Processamento em chunks ──
-        # Se chunk_size é None ou >= total de páginas, processa tudo de uma vez.
-        effective_chunk = chunk_size if (chunk_size and chunk_size > 0) else len(pages_to_process)
+        # ── Processamento paralelo de chunks (se disponível) ──
+        if (
+            chunk_size and chunk_size > 0
+            and max_workers != 1
+            and len(pages_to_process) > chunk_size
+        ):
+            from .parallel import process_pdf_chunks_parallel
+            par_result, par_ocr = process_pdf_chunks_parallel(
+                doc_path=doc_path,
+                pages_to_process=pages_to_process,
+                chunk_size=chunk_size,
+                remove_set=remove_set,
+                ocr_enabled=ocr_enabled,
+                ocr_lang=ocr_lang,
+                ocr_threshold=ocr_threshold,
+                detect_columns=detect_columns,
+                max_workers=max_workers,
+            )
+            if par_result is not None:
+                if par_ocr > 0:
+                    logger.info(
+                        "OCR aplicado em %d páginas (paralelo)",
+                        par_ocr,
+                    )
+                return "\n".join(par_result)
+
+        # ── Processamento sequencial em chunks ──
+        effective_chunk = (
+            chunk_size
+            if (chunk_size and chunk_size > 0)
+            else len(pages_to_process)
+        )
         ocr_count = 0
         chunks_processed = 0
 

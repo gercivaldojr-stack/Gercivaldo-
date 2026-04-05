@@ -222,6 +222,12 @@ with st.sidebar:
              "0 = processar tudo de uma vez. Aplica-se apenas a PDFs.",
     )
 
+    workers_input = st.number_input(
+        "Workers paralelos",
+        min_value=0, max_value=32, value=0,
+        help="0 = sequencial. -1 = auto-detectar CPUs. >0 = fixo.",
+    )
+
     st.divider()
     st.caption("Formatos aceitos: PDF, DOCX, TXT, MD")
     st.caption("v5.0 | Python 3.10+ | PyMuPDF | python-docx")
@@ -247,6 +253,7 @@ if uploaded_files:
         # Preparar valores de page_range e chunk_size
         page_range_val = page_range_input.strip() if page_range_input.strip() else None
         chunk_size_val = chunk_size_input if chunk_size_input >= 1 else None
+        workers_val = workers_input if workers_input != 0 else None
 
         for i, uploaded_file in enumerate(uploaded_files):
             progress_text = f"Processando {i + 1}/{len(uploaded_files)}: {uploaded_file.name}"
@@ -274,6 +281,7 @@ if uploaded_files:
                 chunk_size=chunk_size_val if is_pdf else None,
                 detect_columns=detect_columns_opt and is_pdf,
                 output_format=output_format_key,
+                max_workers=workers_val,
             )
             results.append(result)
 

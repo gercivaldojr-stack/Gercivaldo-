@@ -1,5 +1,12 @@
 # Changelog
 
+## v6.0 (2026-04-05)
+
+### Novos recursos
+
+- **Processamento paralelo**: `core/parallel.py` com `ProcessPoolExecutor` para batch e chunks de PDF. `--workers N` na CLI (0=sequencial, -1=auto, N=fixo). `convert_batch_parallel()` processa múltiplos arquivos em workers separados. `process_pdf_chunks_parallel()` processa chunks de um PDF em paralelo. Fallback sequencial automático quando max_workers=1 ou arquivo único.
+- **Header/footer com amostragem**: `_detect_hf_zones()` refatorada para amostrar apenas 50 páginas em PDFs grandes (primeiras 10 + últimas 10 + N do meio), reduzindo memória de O(N) para O(50). Padrões identificados na amostra são aplicados a todas as páginas em streaming.
+
 ## v5.1 (2026-04-05)
 
 ### Novos recursos

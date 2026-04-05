@@ -54,3 +54,8 @@ ocr_threshold: 30
 # Processa N páginas por vez, liberando memória entre chunks.
 # Recomendado: 50-200 para PDFs com 500+ páginas em máquinas com pouca RAM.
 # chunk_size: 100
+
+# Workers para processamento paralelo.
+# 0 ou null = sequencial (padrão). -1 = auto (detectar CPUs). N = fixo.
+# Aplica-se a --batch e chunks de PDFs grandes.
+# max_workers: 0

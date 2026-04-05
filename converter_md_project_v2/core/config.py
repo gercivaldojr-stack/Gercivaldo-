@@ -29,6 +29,7 @@ DEFAULTS = {
     "chunk_size": None,
     "detect_columns": True,
     "output_format": "md",
+    "max_workers": None,
 }
 
 
@@ -104,6 +105,15 @@ def merge_cli_into_config(cfg: dict, args) -> dict:
         result["detect_columns"] = True
     if hasattr(args, "output_format") and args.output_format is not None:
         result["output_format"] = args.output_format
+    if hasattr(args, "workers") and args.workers is not None:
+        w = args.workers
+        if w == 0:
+            result["max_workers"] = None
+        elif w == -1:
+            import multiprocessing as mp
+            result["max_workers"] = mp.cpu_count() or 1
+        else:
+            result["max_workers"] = w
 
     # Garantir defaults
     for key, default in DEFAULTS.items():
