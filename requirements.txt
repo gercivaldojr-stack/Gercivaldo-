@@ -1,4 +1,4 @@
-# Dependencias do projeto Conversor Juridico (v5.0)
-# O projeto esta em converter_md_project_v2/
+# Dependências do projeto Conversor Jurídico (v5.0)
+# O projeto está em converter_md_project_v2/
 # Use: pip install -r converter_md_project_v2/requirements.txt
 -r converter_md_project_v2/requirements.txt
