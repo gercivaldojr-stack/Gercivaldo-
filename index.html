@@ -3,1436 +3,411 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Conversor DOCX para Markdown - Otimizado para Jurídico</title>
+    <title>Conversor Juridico PDF → Markdown | v7.1</title>
+    <meta name="description" content="Conversor de documentos juridicos (PDF, DOCX, TXT) para Markdown limpo e estruturado. OCR seletivo, deteccao de colunas, exportacao HTML/DOCX.">
+    <meta property="og:title" content="Conversor Juridico PDF → Markdown">
+    <meta property="og:description" content="408 testes | 14 modulos | Python 3.10+ | OCR seletivo | Multi-formato">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://gercivaldojr-stack.github.io/Gercivaldo-/">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
+        *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+        :root {
+            --bg-dark: #0a0f1a;
+            --bg-card: #111827;
+            --bg-code: #1a2332;
+            --text-primary: #f0f4f8;
+            --text-secondary: #94a3b8;
+            --accent-gold: #d4a843;
+            --accent-blue: #3b82f6;
+            --border: #1e293b;
+            --glow: rgba(212, 168, 67, 0.15);
+        }
+        html { scroll-behavior: smooth; }
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            line-height: 1.6;
-            color: #333;
-            background-color: #f5f5f5;
+            font-family: 'Inter', -apple-system, sans-serif;
+            background: var(--bg-dark);
+            color: var(--text-primary);
+            line-height: 1.7;
+            overflow-x: hidden;
         }
-        .container {
-            max-width: 900px;
-            margin: 0 auto;
-            padding: 20px;
+        a { color: var(--accent-gold); text-decoration: none; transition: opacity .2s; }
+        a:hover { opacity: .8; }
+        .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+        code, .mono { font-family: 'JetBrains Mono', monospace; }
+
+        /* Animations */
+        @keyframes fadeUp { from { opacity:0; transform:translateY(30px); } to { opacity:1; transform:translateY(0); } }
+        @keyframes fadeIn { from { opacity:0; } to { opacity:1; } }
+        .fade-up { animation: fadeUp .7s ease-out both; }
+        .fade-in { animation: fadeIn .6s ease-out both; }
+        .delay-1 { animation-delay: .15s; }
+        .delay-2 { animation-delay: .3s; }
+        .delay-3 { animation-delay: .45s; }
+
+        /* Nav */
+        nav {
+            position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+            background: rgba(10,15,26,.85); backdrop-filter: blur(12px);
+            border-bottom: 1px solid var(--border); padding: 14px 0;
         }
-        header {
-            background: linear-gradient(135deg, #1e3c72, #2a5298);
-            color: white;
-            padding: 30px;
-            text-align: center;
-            border-radius: 10px;
-            margin-bottom: 30px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        nav .container { display: flex; justify-content: space-between; align-items: center; }
+        nav .logo { font-weight: 700; font-size: 1.1rem; }
+        nav .logo span { color: var(--accent-gold); }
+        nav .links { display: flex; gap: 24px; }
+        nav .links a { color: var(--text-secondary); font-size: .9rem; font-weight: 500; }
+        nav .links a:hover { color: var(--accent-gold); }
+        @media (max-width: 640px) { nav .links { display: none; } }
+
+        /* Hero */
+        .hero {
+            min-height: 100vh; display: flex; align-items: center; justify-content: center;
+            text-align: center; padding: 120px 24px 80px;
+            background: radial-gradient(ellipse at 50% 0%, rgba(59,130,246,.08) 0%, transparent 60%);
         }
-        h1 { font-size: 2.2rem; margin-bottom: 10px; }
-        .subtitle { font-size: 1.1rem; opacity: 0.9; }
-        .upload-section {
-            background: white;
-            padding: 30px;
-            border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            margin-bottom: 30px;
-            border: 2px dashed #ccc;
-            transition: all 0.3s ease;
+        .hero h1 { font-size: clamp(2.2rem, 5vw, 3.5rem); font-weight: 800; line-height: 1.15; margin-bottom: 16px; }
+        .hero h1 .gold { color: var(--accent-gold); }
+        .hero .subtitle { color: var(--text-secondary); font-size: 1.05rem; margin-bottom: 36px; font-weight: 500; }
+        .hero .subtitle code {
+            background: var(--bg-card); padding: 3px 10px; border-radius: 6px;
+            font-size: .85rem; border: 1px solid var(--border);
         }
-        .upload-section.dragover {
-            border-color: #2a5298;
-            background-color: #f0f8ff;
-            transform: scale(1.01);
+        .btn-group { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
+        .btn {
+            display: inline-flex; align-items: center; gap: 8px;
+            padding: 14px 28px; border-radius: 10px; font-weight: 600;
+            font-size: .95rem; transition: all .25s; border: none; cursor: pointer;
         }
-        .upload-content {
-            text-align: center;
-            padding: 40px 20px;
+        .btn-primary { background: var(--accent-gold); color: #0a0f1a; }
+        .btn-primary:hover { background: #c49a35; transform: translateY(-2px); box-shadow: 0 8px 30px rgba(212,168,67,.25); }
+        .btn-secondary { background: transparent; color: var(--text-primary); border: 1.5px solid var(--border); }
+        .btn-secondary:hover { border-color: var(--accent-gold); color: var(--accent-gold); transform: translateY(-2px); }
+
+        /* Sections */
+        section { padding: 80px 0; }
+        .section-title { text-align: center; font-size: 1.8rem; font-weight: 700; margin-bottom: 12px; }
+        .section-subtitle {
+            text-align: center; color: var(--text-secondary); font-size: 1rem;
+            margin-bottom: 48px; max-width: 600px; margin-left: auto; margin-right: auto;
         }
-        .upload-icon {
-            font-size: 50px;
-            color: #2a5298;
-            margin-bottom: 20px;
+
+        /* Feature Grid */
+        .feature-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+        @media (max-width: 768px) { .feature-grid { grid-template-columns: 1fr; } }
+        .feature-card {
+            background: var(--bg-card); border: 1px solid var(--border);
+            border-radius: 14px; padding: 28px; transition: all .3s;
         }
-        .upload-text {
-            color: #666;
-            margin-bottom: 15px;
+        .feature-card:hover { border-color: var(--accent-gold); transform: translateY(-4px); box-shadow: 0 12px 40px var(--glow); }
+        .feature-card .icon { font-size: 1.8rem; margin-bottom: 14px; }
+        .feature-card h3 { font-size: 1.05rem; font-weight: 600; margin-bottom: 8px; }
+        .feature-card p { color: var(--text-secondary); font-size: .9rem; line-height: 1.6; }
+
+        /* Format Cards */
+        .format-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 20px; }
+        @media (max-width: 768px) { .format-grid { grid-template-columns: 1fr; } }
+        .format-card {
+            background: var(--bg-card); border: 1px solid var(--border);
+            border-radius: 14px; padding: 32px; text-align: center; transition: all .3s;
         }
-        .btn-primary {
-            background: #2a5298;
-            color: white;
-            border: none;
-            padding: 12px 25px;
-            border-radius: 5px;
-            cursor: pointer;
-            font-size: 1rem;
-            transition: background 0.3s;
+        .format-card:hover { border-color: var(--accent-blue); box-shadow: 0 12px 40px rgba(59,130,246,.1); }
+        .format-card .ext { font-size: 2.4rem; font-weight: 800; margin-bottom: 8px; }
+        .format-card .ext.md { color: var(--accent-gold); }
+        .format-card .ext.html { color: #f97316; }
+        .format-card .ext.docx { color: var(--accent-blue); }
+        .format-card h3 { font-size: 1rem; margin-bottom: 6px; }
+        .format-card p { color: var(--text-secondary); font-size: .85rem; }
+
+        /* Tabs */
+        .tab-nav { display: flex; gap: 0; border-bottom: 2px solid var(--border); }
+        .tab-btn {
+            padding: 12px 24px; background: none; border: none; color: var(--text-secondary);
+            font-family: inherit; font-size: .95rem; font-weight: 600; cursor: pointer;
+            border-bottom: 2px solid transparent; margin-bottom: -2px; transition: all .2s;
         }
-        .btn-primary:hover { background: #1e3c72; }
-        .btn-primary:disabled, .btn-secondary:disabled {
-            background: #ccc;
-            cursor: not-allowed;
-            opacity: 0.6;
+        .tab-btn.active { color: var(--accent-gold); border-bottom-color: var(--accent-gold); }
+        .tab-content { display: none; padding: 24px 0; }
+        .tab-content.active { display: block; animation: fadeIn .4s; }
+        pre.code-block {
+            background: var(--bg-code); border: 1px solid var(--border);
+            border-radius: 10px; padding: 20px 24px; overflow-x: auto;
+            font-size: .85rem; line-height: 1.8;
         }
-        .btn-secondary {
-            background: #6c757d;
-            color: white;
-            border: none;
-            padding: 10px 20px;
-            border-radius: 5px;
-            cursor: pointer;
-            margin-left: 10px;
-            transition: background 0.3s;
+
+        /* Architecture */
+        .arch-box {
+            background: var(--bg-code); border: 1px solid var(--border);
+            border-radius: 14px; padding: 32px; overflow-x: auto;
+            font-size: .82rem; line-height: 1.9; text-align: center;
         }
-        .btn-secondary:hover { background: #5a6268; }
-        .progress-section {
-            display: none;
-            margin-bottom: 20px;
-        }
-        .progress-bar {
-            width: 100%;
-            height: 8px;
-            background: #e9ecef;
-            border-radius: 4px;
-            overflow: hidden;
-            margin: 10px 0;
-        }
-        .progress-fill {
-            height: 100%;
-            background: linear-gradient(90deg, #28a745, #20c997);
-            width: 0;
-            transition: width 0.3s ease;
-            border-radius: 4px;
-        }
-        .progress-text {
-            text-align: center;
-            font-size: 0.9rem;
-            color: #666;
-        }
-        .preview-section {
-            background: white;
-            border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            overflow: hidden;
-        }
-        .preview-tabs {
-            display: flex;
-            background: #f8f9fa;
-            padding: 0;
-            margin: 0;
-            list-style: none;
-            border-bottom: 1px solid #dee2e6;
-        }
-        .preview-tabs li {
-            flex: 1;
-            text-align: center;
-            padding: 15px 0;
-            cursor: pointer;
-            transition: all 0.3s;
-            border-bottom: 3px solid transparent;
-            user-select: none;
-        }
-        .preview-tabs li.active {
-            background: white;
-            color: #2a5298;
-            border-bottom-color: #2a5298;
-            font-weight: 600;
-        }
-        .preview-tabs li:hover:not(.active) {
-            background: #e9ecef;
-        }
-        .tab-content {
-            display: none;
-            padding: 25px;
-        }
-        .tab-content.active {
-            display: block;
-        }
-        #markdown-preview {
-            width: 100%;
-            height: 500px;
-            border: 1px solid #ddd;
-            border-radius: 5px;
-            padding: 15px;
-            font-family: 'Courier New', Courier, monospace;
-            font-size: 14px;
-            line-height: 1.6;
-            background: #f8f9fa;
-            overflow-y: auto;
-            white-space: pre-wrap;
-            word-wrap: break-word;
-            resize: vertical;
-        }
-        #rendered-preview {
-            width: 100%;
-            min-height: 500px;
-            border: 1px solid #ddd;
-            border-radius: 5px;
-            padding: 15px 25px;
-            overflow-y: auto;
-            background: white;
-        }
-        #rendered-preview h1 { font-size: 1.8rem; margin: 1rem 0 0.5rem; border-bottom: 2px solid #eee; padding-bottom: 0.3rem; }
-        #rendered-preview h2 { font-size: 1.5rem; margin: 0.8rem 0 0.4rem; border-bottom: 1px solid #eee; padding-bottom: 0.2rem; }
-        #rendered-preview h3 { font-size: 1.3rem; margin: 0.7rem 0 0.3rem; }
-        #rendered-preview h4 { font-size: 1.1rem; margin: 0.6rem 0 0.3rem; }
-        #rendered-preview p { margin: 0.5rem 0; }
-        #rendered-preview blockquote { border-left: 4px solid #2a5298; padding: 0.5rem 1rem; margin: 0.5rem 0; background: #f8f9fa; }
-        #rendered-preview ul, #rendered-preview ol { padding-left: 2rem; margin: 0.5rem 0; }
-        #rendered-preview li { margin: 0.2rem 0; }
-        #rendered-preview strong { color: #1e3c72; }
-        #rendered-preview table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
-        #rendered-preview th, #rendered-preview td { border: 1px solid #ddd; padding: 8px 12px; text-align: left; }
-        #rendered-preview th { background: #f0f0f0; font-weight: 600; }
-        .action-buttons {
-            display: flex;
-            justify-content: center;
-            gap: 15px;
-            margin-top: 20px;
-            padding: 20px 0;
-            border-top: 1px solid #eee;
-        }
-        .file-info {
-            background: #e3f2fd;
-            padding: 15px;
-            border-radius: 5px;
-            margin-bottom: 15px;
-            font-size: 0.9rem;
-            color: #0d47a1;
-            display: none;
-        }
-        .conversion-stats {
-            background: #e8f5e9;
-            padding: 12px 15px;
-            border-radius: 5px;
-            margin-bottom: 15px;
-            font-size: 0.85rem;
-            color: #2e7d32;
-            display: none;
-        }
-        .conversion-stats span {
-            margin-right: 20px;
-        }
-        .legal-tip {
-            background: #fff3e0;
-            border-left: 4px solid #ff9800;
-            padding: 15px;
-            margin: 20px 0;
-            border-radius: 0 5px 5px 0;
-            font-size: 0.9rem;
-        }
-        .error-message {
-            background: #ffebee;
-            border-left: 4px solid #f44336;
-            padding: 15px;
-            margin: 15px 0;
-            border-radius: 0 5px 5px 0;
-            font-size: 0.9rem;
-            color: #c62828;
-            display: none;
-        }
-        .warning-list {
-            background: #fff8e1;
-            border-left: 4px solid #ffc107;
-            padding: 15px;
-            margin: 15px 0;
-            border-radius: 0 5px 5px 0;
-            font-size: 0.85rem;
-            color: #f57f17;
-            display: none;
-            max-height: 150px;
-            overflow-y: auto;
-        }
-        .warning-list ul {
-            margin: 5px 0 0 20px;
-        }
+        .arch-box pre { display: inline-block; text-align: left; }
+        .arch-box .gold { color: var(--accent-gold); }
+        .arch-box .blue { color: var(--accent-blue); }
+        .arch-box .dim { color: var(--text-secondary); }
+
+        /* Stats */
+        .stats-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 20px; text-align: center; }
+        @media (max-width: 640px) { .stats-grid { grid-template-columns: repeat(2,1fr); } }
+        .stat-item .number { font-size: 2.8rem; font-weight: 800; color: var(--accent-gold); }
+        .stat-item .label { color: var(--text-secondary); font-size: .9rem; margin-top: 4px; }
+
+        /* Footer */
         footer {
-            text-align: center;
-            padding: 20px;
-            color: #666;
-            font-size: 0.9rem;
-            margin-top: 30px;
+            border-top: 1px solid var(--border); padding: 32px 0;
+            text-align: center; color: var(--text-secondary); font-size: .85rem;
         }
-        @media (max-width: 768px) {
-            .container { padding: 15px; }
-            h1 { font-size: 1.8rem; }
-            .action-buttons { flex-direction: column; align-items: center; }
-            .action-buttons button { width: 100%; margin-left: 0; }
-            .btn-secondary { margin-left: 0 !important; }
-            .conversion-stats { display: flex; flex-direction: column; gap: 5px; }
-            .conversion-stats span { margin-right: 0; }
-        }
+        footer a { color: var(--accent-gold); }
     </style>
 </head>
 <body>
+
+<nav>
     <div class="container">
-        <header>
-            <h1>Conversor DOCX para Markdown</h1>
-            <p class="subtitle">Otimizado para documentos jurídicos e textos extensos</p>
-        </header>
-
-        <section class="upload-section" id="uploadSection">
-            <div class="upload-content">
-                <div class="upload-icon">&#128196;</div>
-                <p class="upload-text">Arraste e solte seu arquivo DOCX aqui ou clique para selecionar</p>
-                <p class="upload-text" style="font-size: 0.9rem; color: #999;">Suporta arquivos grandes (testado até 100MB+)</p>
-                <input type="file" id="fileInput" accept=".docx" style="display: none;">
-                <button class="btn-primary" id="selectBtn">Selecionar Arquivo</button>
-            </div>
-        </section>
-
-        <div class="file-info" id="fileInfo">
-            <strong>Arquivo:</strong> <span id="fileName"></span>
-            <span id="fileSize"></span>
+        <div class="logo"><span>&#9878;</span> Conversor Juridico</div>
+        <div class="links">
+            <a href="#features">Funcionalidades</a>
+            <a href="#formats">Formatos</a>
+            <a href="#usage">Como Usar</a>
+            <a href="#arch">Arquitetura</a>
+            <a href="https://github.com/gercivaldojr-stack/Gercivaldo-" target="_blank">GitHub</a>
         </div>
-
-        <div class="error-message" id="errorMessage"></div>
-
-        <div class="warning-list" id="warningList">
-            <strong>Avisos da conversão:</strong>
-            <ul id="warningItems"></ul>
-        </div>
-
-        <div class="conversion-stats" id="conversionStats">
-            <span id="statChars"></span>
-            <span id="statLines"></span>
-            <span id="statImages"></span>
-            <span id="statTime"></span>
-        </div>
-
-        <div class="progress-section" id="progressSection">
-            <div class="progress-text" id="progressText">Preparando conversão...</div>
-            <div class="progress-bar">
-                <div class="progress-fill" id="progressFill"></div>
-            </div>
-            <div class="progress-text" id="progressPercent">0%</div>
-        </div>
-
-        <section class="preview-section">
-            <ul class="preview-tabs" id="previewTabs">
-                <li class="active" data-tab="markdown">Markdown (Código)</li>
-                <li data-tab="rendered">Visualização Renderizada</li>
-            </ul>
-            <div class="tab-content active" id="markdownTab">
-                <textarea id="markdown-preview" placeholder="Seu Markdown aparecerá aqui após a conversão..."></textarea>
-            </div>
-            <div class="tab-content" id="renderedTab">
-                <div id="rendered-preview"></div>
-            </div>
-        </section>
-
-        <div class="action-buttons" id="actionButtons" style="display: none;">
-            <button class="btn-primary" id="copyBtn">Copiar Markdown</button>
-            <button class="btn-secondary" id="downloadBtn">Baixar .md</button>
-            <button class="btn-secondary" id="downloadHtmlBtn">Baixar .html</button>
-            <button class="btn-secondary" id="downloadZipBtn">Baixar .zip</button>
-            <button class="btn-secondary" id="clearBtn">Limpar</button>
-        </div>
-
-        <div class="legal-tip">
-            <strong>Dica para documentos jurídicos:</strong> Este conversor preserva a estrutura hierárquica (Capítulos, Seções, Artigos) e formata automaticamente numeração legal como headers Markdown.
-        </div>
-
-        <footer>
-            <p>Conversor DOCX &rarr; Markdown &bull; Versão 2.0</p>
-        </footer>
     </div>
+</nav>
+
+<section class="hero">
+    <div class="container">
+        <h1 class="fade-up">&#9878; Conversor Juridico<br><span class="gold">PDF &rarr; Markdown</span></h1>
+        <p class="subtitle fade-up delay-1">
+            <code>v7.1</code> &nbsp;|&nbsp; 408 testes &nbsp;|&nbsp; 14 modulos &nbsp;|&nbsp; Python 3.10+
+        </p>
+        <div class="btn-group fade-up delay-2">
+            <a href="https://share.streamlit.io/gercivaldojr-stack/Gercivaldo-/main/converter_md_project_v2/app/main.py" class="btn btn-primary">Abrir Aplicacao &rarr;</a>
+            <a href="https://github.com/gercivaldojr-stack/Gercivaldo-" target="_blank" class="btn btn-secondary">Ver no GitHub &rarr;</a>
+        </div>
+    </div>
+</section>
+
+<section id="features">
+    <div class="container">
+        <h2 class="section-title fade-up">Funcionalidades</h2>
+        <p class="section-subtitle fade-up delay-1">Tudo que voce precisa para converter documentos juridicos</p>
+        <div class="feature-grid">
+            <div class="feature-card fade-up delay-1">
+                <div class="icon">&#128196;</div>
+                <h3>Extracao Inteligente</h3>
+                <p>PDF, DOCX, TXT com tabelas, headers/footers, OCR seletivo por pagina.</p>
+            </div>
+            <div class="feature-card fade-up delay-2">
+                <div class="icon">&#127963;</div>
+                <h3>Heuristicas Juridicas</h3>
+                <p>Modo forense e doutrina, citacoes, metadados, pecas processuais.</p>
+            </div>
+            <div class="feature-card fade-up delay-3">
+                <div class="icon">&#128202;</div>
+                <h3>Deteccao de Colunas</h3>
+                <p>Identifica e reordena PDFs de 2 colunas automaticamente.</p>
+            </div>
+            <div class="feature-card fade-up delay-1">
+                <div class="icon">&#9889;</div>
+                <h3>Processamento Paralelo</h3>
+                <p>Multiprocessing para batch e chunks de PDFs grandes.</p>
+            </div>
+            <div class="feature-card fade-up delay-2">
+                <div class="icon">&#127758;</div>
+                <h3>Deteccao de Idioma</h3>
+                <p>Auto-detecta pt, en, es, fr, de, it para configurar OCR.</p>
+            </div>
+            <div class="feature-card fade-up delay-3">
+                <div class="icon">&#128190;</div>
+                <h3>Cache de OCR</h3>
+                <p>Evita re-processamento salvando cache em disco por hash de pagina.</p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section id="formats" style="background: rgba(17,24,39,.5);">
+    <div class="container">
+        <h2 class="section-title fade-up">Formatos de Saida</h2>
+        <p class="section-subtitle fade-up delay-1">Exporte para o formato que voce precisa</p>
+        <div class="format-grid">
+            <div class="format-card fade-up delay-1">
+                <div class="ext md">.md</div>
+                <h3>Markdown</h3>
+                <p>Limpo, estruturado, com frontmatter YAML e sumario.</p>
+            </div>
+            <div class="format-card fade-up delay-2">
+                <div class="ext html">.html</div>
+                <h3>HTML</h3>
+                <p>Documento completo com CSS juridico (serif, blockquotes, tabelas).</p>
+            </div>
+            <div class="format-card fade-up delay-3">
+                <div class="ext docx">.docx</div>
+                <h3>Word / DOCX</h3>
+                <p>Headings, tabelas, blockquotes, listas bullet via python-docx.</p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section id="usage">
+    <div class="container">
+        <h2 class="section-title fade-up">Como Usar</h2>
+        <p class="section-subtitle fade-up delay-1">Tres formas de executar o conversor</p>
+        <div class="tabs fade-up delay-2">
+            <div class="tab-nav">
+                <button class="tab-btn active" onclick="showTab(this,'cli')">CLI</button>
+                <button class="tab-btn" onclick="showTab(this,'streamlit')">Streamlit</button>
+                <button class="tab-btn" onclick="showTab(this,'docker')">Docker</button>
+            </div>
+            <div id="tab-cli" class="tab-content active">
+<pre class="code-block mono"><span style="color:var(--text-secondary)"># Conversao basica</span>
+python cli.py peticao.pdf
+
+<span style="color:var(--text-secondary)"># Com opcoes</span>
+python cli.py peticao.pdf -o saida.md --mode forense --toc --citations
+
+<span style="color:var(--text-secondary)"># OCR com deteccao automatica de idioma</span>
+python cli.py autos.pdf --ocr --ocr-lang auto --ocr-cache
+
+<span style="color:var(--text-secondary)"># Exportar como HTML ou DOCX</span>
+python cli.py peticao.pdf --format html
+python cli.py peticao.pdf --format docx
+
+<span style="color:var(--text-secondary)"># Batch paralelo</span>
+python cli.py ./autos/ --batch --workers -1
+
+<span style="color:var(--text-secondary)"># PDF grande com page range e chunks</span>
+python cli.py grande.pdf --pages 1-500 --chunk-size 50</pre>
+            </div>
+            <div id="tab-streamlit" class="tab-content">
+                <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:14px;padding:40px;text-align:center;">
+                    <div style="font-size:3rem;margin-bottom:16px;">&#9878;</div>
+                    <h3 style="margin-bottom:8px;">Interface Web Streamlit</h3>
+                    <p style="color:var(--text-secondary);margin-bottom:24px;">Upload, configure, preview e download &mdash; tudo no navegador.</p>
+<pre class="code-block mono" style="text-align:left;display:inline-block;">cd converter_md_project_v2
+pip install -r requirements.txt
+streamlit run app/main.py</pre>
+                    <div style="margin-top:20px;">
+                        <a href="https://share.streamlit.io/gercivaldojr-stack/Gercivaldo-/main/converter_md_project_v2/app/main.py" class="btn btn-primary" style="font-size:.85rem;padding:10px 20px;">Abrir no Streamlit Cloud &rarr;</a>
+                    </div>
+                </div>
+            </div>
+            <div id="tab-docker" class="tab-content">
+<pre class="code-block mono"><span style="color:var(--text-secondary)"># Build</span>
+cd converter_md_project_v2
+docker build -t converter-juridico .
+
+<span style="color:var(--text-secondary)"># Run (porta 8501)</span>
+docker run -p 8501:8501 converter-juridico
+
+<span style="color:var(--text-secondary)"># Docker Compose</span>
+docker-compose up -d
+
+<span style="color:var(--text-secondary)"># Acesse http://localhost:8501</span></pre>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section id="arch" style="background: rgba(17,24,39,.5);">
+    <div class="container">
+        <h2 class="section-title fade-up">Arquitetura</h2>
+        <p class="section-subtitle fade-up delay-1">Pipeline modular em 5 etapas</p>
+        <div class="arch-box mono fade-up delay-2">
+<pre>
+  <span class="gold">PDF / DOCX / TXT</span>
+         |
+    <span class="blue">[1] extract_text()</span>         <span class="dim">extractors.py + column_detector.py</span>
+         |                       <span class="dim">+ OCR seletivo + lang_detector.py</span>
+         |                       <span class="dim">+ ocr_cache.py + chunks + parallel.py</span>
+         |
+    <span class="blue">[2] clean_text()</span>           <span class="dim">cleaning.py</span>
+         |                       <span class="dim">dehyphenation, headers/footers, CNJ</span>
+         |
+    <span class="blue">[3] apply_heuristics()</span>     <span class="dim">legal_heuristics.py</span>
+         |                       <span class="dim">headings H1/H2/H3, citacoes, assinaturas</span>
+         |
+    <span class="blue">[4] generate_frontmatter()</span> <span class="dim">metadata.py</span>
+         |                       <span class="dim">YAML + metadados processuais</span>
+         |
+    <span class="blue">[5] export()</span>              <span class="dim">html_exporter.py / docx_exporter.py</span>
+         |
+    <span class="gold">.md  |  .html  |  .docx</span>
+</pre>
+        </div>
+    </div>
+</section>
+
+<section id="stats">
+    <div class="container">
+        <div class="stats-grid">
+            <div class="stat-item fade-up">
+                <div class="number" data-target="408">0</div>
+                <div class="label">Testes</div>
+            </div>
+            <div class="stat-item fade-up delay-1">
+                <div class="number" data-target="14">0</div>
+                <div class="label">Modulos</div>
+            </div>
+            <div class="stat-item fade-up delay-2">
+                <div class="number" data-target="6">0</div>
+                <div class="label">Idiomas OCR</div>
+            </div>
+            <div class="stat-item fade-up delay-3">
+                <div class="number" data-target="3">0</div>
+                <div class="label">Formatos</div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<footer>
+    <div class="container">
+        <p>Feito com Python + PyMuPDF + Tesseract &nbsp;|&nbsp;
+           <a href="https://github.com/gercivaldojr-stack/Gercivaldo-" target="_blank">GitHub</a> &nbsp;|&nbsp;
+           <a href="https://github.com/gercivaldojr-stack/Gercivaldo-/tree/main/converter_md_project_v2" target="_blank">Codigo-fonte</a> &nbsp;|&nbsp;
+           MIT License</p>
+    </div>
+</footer>
+
+<script>
+function showTab(btn, id) {
+    document.querySelectorAll('.tab-content').forEach(function(t) { t.classList.remove('active'); });
+    document.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.remove('active'); });
+    document.getElementById('tab-' + id).classList.add('active');
+    btn.classList.add('active');
+}
+
+function animateCounters() {
+    document.querySelectorAll('.number[data-target]').forEach(function(el) {
+        var target = parseInt(el.dataset.target);
+        var duration = 1500;
+        var start = performance.now();
+        function update(now) {
+            var elapsed = now - start;
+            var progress = Math.min(elapsed / duration, 1);
+            var ease = 1 - Math.pow(1 - progress, 3);
+            el.textContent = Math.round(target * ease);
+            if (progress < 1) requestAnimationFrame(update);
+        }
+        requestAnimationFrame(update);
+    });
+}
+
+var statsObs = new IntersectionObserver(function(entries) {
+    entries.forEach(function(entry) {
+        if (entry.isIntersecting) {
+            animateCounters();
+            statsObs.unobserve(entry.target);
+        }
+    });
+}, { threshold: 0.3 });
+var statsEl = document.getElementById('stats');
+if (statsEl) statsObs.observe(statsEl);
+</script>
 
-    <script>
-        (function() {
-            'use strict';
-
-            // Estado global da aplicação
-            var state = {
-                currentMarkdown: '',
-                currentFileName: '',
-                isConverting: false,
-                markedLoaded: false,
-                images: [],        // { name, blob, objectUrl }
-                jszipLoaded: false
-            };
-
-            // Carregar script externo com tratamento de erros
-            function loadScript(src) {
-                return new Promise(function(resolve, reject) {
-                    var script = document.createElement('script');
-                    script.src = src;
-                    script.onload = resolve;
-                    script.onerror = function() {
-                        reject(new Error('Falha ao carregar: ' + src));
-                    };
-                    document.head.appendChild(script);
-                });
-            }
-
-            // Elementos do DOM (em cache)
-            var dom = {};
-
-            function cacheDom() {
-                var ids = [
-                    'uploadSection', 'fileInput', 'selectBtn', 'fileInfo',
-                    'fileName', 'fileSize', 'progressSection', 'progressText',
-                    'progressFill', 'progressPercent', 'markdown-preview',
-                    'rendered-preview', 'actionButtons', 'copyBtn', 'downloadBtn',
-                    'downloadHtmlBtn', 'downloadZipBtn', 'clearBtn', 'previewTabs',
-                    'errorMessage', 'warningList', 'warningItems', 'conversionStats',
-                    'statChars', 'statLines', 'statImages', 'statTime'
-                ];
-                ids.forEach(function(id) {
-                    dom[id] = document.getElementById(id);
-                });
-                dom.tabContents = document.querySelectorAll('.tab-content');
-            }
-
-            function updateProgress(percent, text) {
-                dom['progressFill'].style.width = percent + '%';
-                dom['progressPercent'].textContent = percent + '%';
-                if (text) {
-                    dom['progressText'].textContent = text;
-                }
-            }
-
-            function showError(message) {
-                dom['errorMessage'].textContent = message;
-                dom['errorMessage'].style.display = 'block';
-            }
-
-            function hideError() {
-                dom['errorMessage'].style.display = 'none';
-            }
-
-            function showWarnings(messages) {
-                if (!messages || messages.length === 0) {
-                    dom['warningList'].style.display = 'none';
-                    return;
-                }
-                dom['warningItems'].innerHTML = messages
-                    .slice(0, 20)
-                    .map(function(m) { return '<li>' + escapeHtml(m.message || String(m)) + '</li>'; })
-                    .join('');
-                if (messages.length > 20) {
-                    dom['warningItems'].innerHTML += '<li>... e mais ' + (messages.length - 20) + ' avisos</li>';
-                }
-                dom['warningList'].style.display = 'block';
-            }
-
-            function showStats(charCount, lineCount, imageCount, timeMs) {
-                dom['statChars'].textContent = 'Caracteres: ' + charCount.toLocaleString('pt-BR');
-                dom['statLines'].textContent = 'Linhas: ' + lineCount.toLocaleString('pt-BR');
-                dom['statImages'].textContent = 'Imagens: ' + imageCount;
-                dom['statTime'].textContent = 'Tempo: ' + (timeMs / 1000).toFixed(2) + 's';
-                dom['conversionStats'].style.display = 'block';
-            }
-
-            function escapeHtml(text) {
-                var div = document.createElement('div');
-                div.textContent = text;
-                return div.innerHTML;
-            }
-
-            // Determinar extensão do arquivo a partir do content-type
-            function extensionFromContentType(contentType) {
-                var map = {
-                    'image/png': '.png',
-                    'image/jpeg': '.jpg',
-                    'image/gif': '.gif',
-                    'image/bmp': '.bmp',
-                    'image/svg+xml': '.svg',
-                    'image/tiff': '.tiff',
-                    'image/webp': '.webp',
-                    'image/x-emf': '.emf',
-                    'image/x-wmf': '.wmf'
-                };
-                return map[contentType] || '.png';
-            }
-
-            // Criar handler de imagens para o Mammoth — extrai blobs em vez de base64
-            function createImageHandler() {
-                return {
-                    convertImage: mammoth.images.imgElement(function(image) {
-                        return image.read('arraybuffer').then(function(buffer) {
-                            var idx = state.images.length + 1;
-                            var ext = extensionFromContentType(image.contentType);
-                            var name = 'imagem-' + idx + ext;
-                            var blob = new Blob([buffer], { type: image.contentType });
-                            var objectUrl = URL.createObjectURL(blob);
-
-                            state.images.push({
-                                name: name,
-                                blob: blob,
-                                objectUrl: objectUrl
-                            });
-
-                            // Retornar tag img com caminho relativo (não base64)
-                            return { src: 'images/' + name };
-                        });
-                    })
-                };
-            }
-
-            // ═══════════════════════════════════════════════════════
-            // ETAPA 1: SANITIZAÇÃO HTML (entre Mammoth e Turndown)
-            // ═══════════════════════════════════════════════════════
-
-            // Detectar se uma <table> é tabela de dados ou layout visual do Word
-            function isLayoutTable(table) {
-                var rows = table.querySelectorAll('tr');
-                var totalRows = rows.length;
-
-                // Tabela com 0 linhas não é tabela de dados
-                if (totalRows === 0) return true;
-
-                // Tabela com 1 linha E 1 célula — wrapper de layout
-                if (totalRows === 1) {
-                    var cells1 = rows[0].querySelectorAll('td, th');
-                    if (cells1.length === 1) return true;
-                    // 1 linha com múltiplas colunas pode ser tabela válida
-                    return false;
-                }
-
-                // Contar colunas
-                var colCounts = [];
-                rows.forEach(function(row) {
-                    colCounts.push(row.querySelectorAll('td, th').length);
-                });
-
-                // Tabelas de coluna única com muitas linhas → provavelmente layout
-                var maxCols = Math.max.apply(null, colCounts);
-                if (maxCols <= 1 && totalRows > 3) return true;
-
-                // Mais de 70% de células vazias → provavelmente layout
-                var emptyCells = 0;
-                var totalCells = 0;
-                rows.forEach(function(row) {
-                    row.querySelectorAll('td, th').forEach(function(cell) {
-                        totalCells++;
-                        if (cell.textContent.trim().length === 0) emptyCells++;
-                    });
-                });
-                if (totalCells > 4 && emptyCells / totalCells > 0.7) return true;
-
-                return false;
-            }
-
-            // Sanitizar HTML gerado pelo Mammoth antes de enviar ao Turndown
-            // Retorna um nó DOM (evita serializar/re-parsear)
-            function sanitizeHtml(html) {
-                // Sanitização via string (leve, sem manipulação DOM pesada)
-                // Evita corrupção da árvore de conteúdo que causava perda de texto
-                var clean = html;
-
-                // ── 1. Remover field codes do Word (texto) ──
-                clean = clean
-                    .replace(/Erro!\s*Indicador\s*n[ãa]o\s*definido\.?/gi, '')
-                    .replace(/Error!\s*Bookmark\s*not\s*defined\.?/gi, '')
-                    .replace(/Erro!\s*Fonte\s*de\s*refer[eê]ncia\s*n[ãa]o\s*encontrada\.?/gi, '')
-                    .replace(/Error!\s*Reference\s*source\s*not\s*found\.?/gi, '');
-
-                // ── 2. Remover elementos com classes sentinela via regex ──
-                // Usar padrão não-ganancioso e ancorado no </p> mais próximo
-                clean = clean.replace(/<p\s+class="doc-header"[^>]*>[^<]*(?:<(?!\/p>)[^<]*)*<\/p>/gi, '');
-                clean = clean.replace(/<p\s+class="doc-footer"[^>]*>[^<]*(?:<(?!\/p>)[^<]*)*<\/p>/gi, '');
-                clean = clean.replace(/<p\s+class="doc-toc"[^>]*>[^<]*(?:<(?!\/p>)[^<]*)*<\/p>/gi, '');
-
-                // ── 3. Extrair notas de rodapé e reposicionar ao final ──
-                var footnotes = [];
-                clean = clean.replace(/<p\s+class="doc-footnote"[^>]*>[^<]*(?:<(?!\/p>)[^<]*)*<\/p>/gi, function(match) {
-                    var tmp = document.createElement('span');
-                    tmp.innerHTML = match.replace(/<\/?p[^>]*>/gi, '');
-                    footnotes.push(tmp.textContent.trim());
-                    return '';
-                });
-                clean = clean.replace(/<p\s+class="doc-endnote"[^>]*>[^<]*(?:<(?!\/p>)[^<]*)*<\/p>/gi, function(match) {
-                    var tmp = document.createElement('span');
-                    tmp.innerHTML = match.replace(/<\/?p[^>]*>/gi, '');
-                    footnotes.push(tmp.textContent.trim());
-                    return '';
-                });
-
-                // ── 4. Remover marcadores de página explícitos ──
-                clean = clean.replace(/<p[^>]*>\s*P[aá]gina\s+\d+\s+de\s+\d+\s*<\/p>/gi, '');
-                clean = clean.replace(/<p[^>]*>\s*Page\s+\d+\s+of\s+\d+\s*<\/p>/gi, '');
-
-                // ── 5. Adicionar notas de rodapé ao final (se houver) ──
-                if (footnotes.length > 0) {
-                    clean += '<hr>';
-                    footnotes.forEach(function(note, idx) {
-                        if (note) {
-                            clean += '<p>[' + (idx + 1) + '] ' + note + '</p>';
-                        }
-                    });
-                }
-
-                console.log('[DOCX Debug] sanitizeHtml: entrada=' + html.length + ' chars, saída=' + clean.length + ' chars, removido=' + (html.length - clean.length) + ' chars');
-                return clean;
-            }
-
-            // ═══════════════════════════════════════════════════════
-            // ETAPA 2: CONFIGURAÇÃO DO TURNDOWN
-            // ═══════════════════════════════════════════════════════
-
-            // Configurar Turndown com regras otimizadas para documentos jurídicos
-            function configureTurndown() {
-                var service = new TurndownService({
-                    headingStyle: 'atx',
-                    codeBlockStyle: 'fenced',
-                    bulletListMarker: '-',
-                    emDelimiter: '*',
-                    strongDelimiter: '**',
-                    blankReplacement: function(content, node) {
-                        return node.nodeName === 'P' ? '\n\n' : '\n';
-                    }
-                });
-
-                // Converter <img> para referência limpa (sem base64)
-                service.addRule('cleanImages', {
-                    filter: 'img',
-                    replacement: function(content, node) {
-                        var src = node.getAttribute('src') || '';
-                        var alt = node.getAttribute('alt') || '';
-
-                        if (src.indexOf('data:') === 0) {
-                            return '';
-                        }
-
-                        return '\n\n![' + alt + '](' + src + ')\n\n';
-                    }
-                });
-
-                // Tabelas inteligentes — detecta layout tables e preserva conteúdo
-                service.addRule('smartTables', {
-                    filter: ['table'],
-                    replacement: function(content, node) {
-                        // ── Detectar tabela de layout (wrapper) e retornar conteúdo direto ──
-                        var directRows = [];
-                        var children = node.children;
-                        for (var c = 0; c < children.length; c++) {
-                            var child = children[c];
-                            if (child.tagName === 'TR') {
-                                directRows.push(child);
-                            } else if (child.tagName === 'THEAD' || child.tagName === 'TBODY' || child.tagName === 'TFOOT') {
-                                var subRows = child.children;
-                                for (var s = 0; s < subRows.length; s++) {
-                                    if (subRows[s].tagName === 'TR') directRows.push(subRows[s]);
-                                }
-                            }
-                        }
-
-                        // Sem linhas → retornar conteúdo já convertido pelo Turndown
-                        if (directRows.length === 0) return content;
-
-                        // Contar colunas máximas (sem usar :scope que pode falhar)
-                        var maxCols = 0;
-                        directRows.forEach(function(row) {
-                            var colCount = 0;
-                            for (var k = 0; k < row.children.length; k++) {
-                                var tag = row.children[k].tagName;
-                                if (tag === 'TD' || tag === 'TH') colCount++;
-                            }
-                            if (colCount > maxCols) maxCols = colCount;
-                        });
-
-                        // ── Layout table: 1 coluna ou 1 linha com 1 célula ──
-                        // Retornar o conteúdo já convertido pelo Turndown (preserva formatação)
-                        if (maxCols <= 1) {
-                            console.log('[DOCX Debug] Tabela layout detectada (1 coluna, ' + directRows.length + ' linhas) — preservando conteúdo convertido (' + content.length + ' chars)');
-                            return '\n\n' + content + '\n\n';
-                        }
-
-                        // ── Tabela de dados: extrair e montar markdown table ──
-                        var headerRow = [];
-                        var dataRows = [];
-
-                        directRows.forEach(function(row, rowIdx) {
-                            // Iterar filhos diretos manualmente (evita :scope)
-                            var cellTexts = [];
-                            var hasThCells = false;
-                            for (var k = 0; k < row.children.length; k++) {
-                                var cell = row.children[k];
-                                var tag = cell.tagName;
-                                if (tag === 'TD' || tag === 'TH') {
-                                    if (tag === 'TH') hasThCells = true;
-                                    var text = cell.textContent.trim()
-                                        .replace(/\|/g, '\\|')
-                                        .replace(/\n+/g, ' ')
-                                        .replace(/\s{2,}/g, ' ');
-                                    cellTexts.push(text);
-                                }
-                            }
-
-                            if ((rowIdx === 0 && hasThCells) || (rowIdx === 0 && dataRows.length === 0)) {
-                                headerRow = cellTexts;
-                            } else {
-                                dataRows.push(cellTexts);
-                            }
-                        });
-
-                        if (maxCols === 0) return content;
-
-                        // Se não há header explícito, usar primeira linha como header
-                        if (headerRow.length === 0 && dataRows.length > 0) {
-                            headerRow = dataRows.shift();
-                        }
-
-                        // Normalizar colunas
-                        while (headerRow.length < maxCols) headerRow.push('');
-                        dataRows.forEach(function(row) {
-                            while (row.length < maxCols) row.push('');
-                        });
-
-                        // Verificar se a tabela é degenerada (todas as células quase vazias)
-                        var totalContent = headerRow.join('');
-                        dataRows.forEach(function(row) { totalContent += row.join(''); });
-                        if (totalContent.trim().length < 5) return '';
-
-                        // Montar tabela markdown
-                        var lines = [];
-                        lines.push('| ' + headerRow.join(' | ') + ' |');
-                        lines.push('| ' + headerRow.map(function() { return '---'; }).join(' | ') + ' |');
-                        dataRows.forEach(function(row) {
-                            var rowContent = row.join('').trim();
-                            if (rowContent.length > 0) {
-                                lines.push('| ' + row.join(' | ') + ' |');
-                            }
-                        });
-
-                        // Se ficou só header + separador, retornar como texto
-                        if (lines.length <= 2) return headerRow.join(' — ');
-
-                        return '\n\n' + lines.join('\n') + '\n\n';
-                    }
-                });
-
-                // Preservar quebras de linha dentro de parágrafos
-                service.addRule('lineBreaks', {
-                    filter: ['br'],
-                    replacement: function() {
-                        return '  \n';
-                    }
-                });
-
-                return service;
-            }
-
-            // ═══════════════════════════════════════════════════════
-            // ETAPA 3: PÓS-PROCESSAMENTO DO MARKDOWN
-            // ═══════════════════════════════════════════════════════
-
-            // Rejunção de parágrafos — DESABILITADA (causava perda de conteúdo)
-            function rejoinBrokenParagraphs(md) {
-                return md;
-            }
-
-            // Pós-processamento de Markdown para documentos jurídicos
-            function postProcessLegalMarkdown(md) {
-                return md
-                    // ── Limpeza de base64 residual ──
-                    .replace(/!\[[^\]]*\]\(data:image\/[^\)]+\)/g, '')
-                    .replace(/<img[^>]*src=["']data:image\/[^"']*["'][^>]*\/?>/gi, '')
-
-                    // ── Limpeza de field codes do Word (redundância de segurança) ──
-                    .replace(/Erro!\s*Indicador\s*n[ãa]o\s*definido\.?/gi, '')
-                    .replace(/Error!\s*Bookmark\s*not\s*defined\.?/gi, '')
-                    .replace(/Erro!\s*Fonte\s*de\s*refer[eê]ncia\s*n[ãa]o\s*encontrada\.?/gi, '')
-                    .replace(/Error!\s*Reference\s*source\s*not\s*found\.?/gi, '')
-
-                    // ── Limpeza de ruído de paginação (apenas padrões inequívocos) ──
-                    .replace(/^[\s]*P[aá]gina\s+\d+\s+de\s+\d+[\s]*$/gim, '')
-                    .replace(/^[\s]*Page\s+\d+\s+of\s+\d+[\s]*$/gim, '')
-                    .replace(/^\s*[-–—]\s*\d{1,4}\s*[-–—]\s*$/gm, '')
-
-                    // ── Limpeza de sumário com leader dots (residual) ──
-                    .replace(/^(.+?)[\.·]{3,}\s*\d+\s*$/gm, '$1')
-
-                    // ── Remover linhas duplicadas consecutivas ──
-                    .replace(/^(.{10,})\n\1$/gm, '$1')
-
-                    // ── Normalização estrutural ──
-                    .replace(/\n{3,}/g, '\n\n')
-
-                    // Promover artigos para heading nível 3 quando não são headings
-                    .replace(/^(Art\.\s*\d+[^\n]*)/gm, '### $1')
-                    // Evitar headings duplicados (### ### ...)
-                    .replace(/^(#{1,6})\s+(#{1,6}\s+)/gm, '$1 ')
-                    // Formatar parágrafos com símbolo de seção
-                    .replace(/^(\u00a7\s*\d+[^\n]*)/gm, '#### $1')
-                    .replace(/^(#{1,6})\s+(#{1,6}\s+)/gm, '$1 ')
-                    // Destacar incisos com romano
-                    .replace(/^(\s*)(I{1,3}|IV|VI{0,3}|IX|XI{0,3})\s*[-\u2013\u2014]\s*/gm, '$1**$2** - ')
-                    // Melhorar alíneas
-                    .replace(/^(\s*)([a-z])\)\s*/gm, '$1- **$2)** ')
-                    // Limpar espaços extras em headings
-                    .replace(/^(#+)\s{2,}/gm, '$1 ')
-
-                    // ── Limpeza de tabelas degeneradas no Markdown ──
-                    // Remover tabelas que ficaram só com header e separador
-                    .replace(/\n\|[^\n]+\|\n\|[\s\-:|]+\|\n(?!\|)/g, '\n')
-                    // Remover tabelas com todas as células vazias
-                    .replace(/\n(\|[\s]*\|[\s]*\n){2,}/g, '\n')
-
-                    // Normalizar novamente
-                    .replace(/\n{3,}/g, '\n\n')
-                    .trim();
-            }
-
-            // Renderizar markdown para HTML (fallback caso marked.js não carregue)
-            function renderMarkdownFallback(text) {
-                if (!text) return '';
-                var html = escapeHtml(text)
-                    .replace(/^###### (.*)$/gm, '<h6>$1</h6>')
-                    .replace(/^##### (.*)$/gm, '<h5>$1</h5>')
-                    .replace(/^#### (.*)$/gm, '<h4>$1</h4>')
-                    .replace(/^### (.*)$/gm, '<h3>$1</h3>')
-                    .replace(/^## (.*)$/gm, '<h2>$1</h2>')
-                    .replace(/^# (.*)$/gm, '<h1>$1</h1>')
-                    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-                    .replace(/\*(.+?)\*/g, '<em>$1</em>')
-                    .replace(/`(.+?)`/g, '<code>$1</code>')
-                    .replace(/^&gt;\s*(.*)$/gm, '<blockquote><p>$1</p></blockquote>')
-                    .replace(/^-\s+(.*)$/gm, '<li>$1</li>')
-                    .replace(/^(\d+)\.\s+(.*)$/gm, '<li>$2</li>')
-                    .replace(/\n\n/g, '</p><p>')
-                    .replace(/^([^<].+)$/gm, '<p>$1</p>');
-                return '<div>' + html + '</div>';
-            }
-
-            function renderMarkdownToHtml(text) {
-                if (!text) return '';
-                if (state.markedLoaded && window.marked) {
-                    return marked.parse(text);
-                }
-                return renderMarkdownFallback(text);
-            }
-
-            // Processar arquivo DOCX
-            async function processFile(file) {
-                if (state.isConverting) return;
-                state.isConverting = true;
-
-                var startTime = performance.now();
-
-                // Validar arquivo
-                var validType = file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
-                var validExt = file.name.toLowerCase().endsWith('.docx');
-                if (!validType && !validExt) {
-                    showError('Arquivo inválido. Por favor selecione um arquivo .docx');
-                    state.isConverting = false;
-                    return;
-                }
-
-                hideError();
-                dom['warningList'].style.display = 'none';
-                dom['conversionStats'].style.display = 'none';
-
-                // Mostrar informações do arquivo
-                state.currentFileName = file.name;
-                dom['fileName'].textContent = file.name;
-                var sizeInMB = (file.size / (1024 * 1024)).toFixed(2);
-                dom['fileSize'].textContent = ' (' + sizeInMB + ' MB)';
-                dom['fileInfo'].style.display = 'block';
-
-                // Resetar interface
-                dom['markdown-preview'].value = '';
-                dom['rendered-preview'].innerHTML = '';
-                dom['actionButtons'].style.display = 'none';
-                state.currentMarkdown = '';
-                // Revogar URLs anteriores e limpar imagens
-                state.images.forEach(function(img) {
-                    if (img.objectUrl) URL.revokeObjectURL(img.objectUrl);
-                });
-                state.images = [];
-
-                // Desabilitar botão durante conversão
-                dom['selectBtn'].disabled = true;
-                dom['selectBtn'].textContent = 'Convertendo...';
-
-                try {
-                    dom['progressSection'].style.display = 'block';
-                    updateProgress(10, 'Lendo o arquivo...');
-
-                    var arrayBuffer = await file.arrayBuffer();
-                    updateProgress(30, 'Convertendo DOCX para HTML...');
-
-                    // Converter DOCX para HTML com Mammoth
-                    // Imagens são extraídas como blobs, não como base64 inline
-                    var imageHandler = createImageHandler();
-                    var result = await mammoth.convertToHtml(
-                        { arrayBuffer: arrayBuffer },
-                        {
-                            convertImage: imageHandler.convertImage,
-                            styleMap: [
-                                // Headings (EN)
-                                "p[style-name='Title'] => h1:fresh",
-                                "p[style-name='Heading 1'] => h1:fresh",
-                                "p[style-name='Heading 2'] => h2:fresh",
-                                "p[style-name='Heading 3'] => h3:fresh",
-                                "p[style-name='Heading 4'] => h4:fresh",
-                                "p[style-name='Heading 5'] => h5:fresh",
-                                "p[style-name='Heading 6'] => h6:fresh",
-                                "p[style-name='Subtitle'] => h2:fresh",
-                                // Headings (PT)
-                                "p[style-name='Título'] => h1:fresh",
-                                "p[style-name='Título 1'] => h1:fresh",
-                                "p[style-name='Título 2'] => h2:fresh",
-                                "p[style-name='Título 3'] => h3:fresh",
-                                "p[style-name='Título 4'] => h4:fresh",
-                                // Headers/footers → classes sentinela para remoção
-                                "p[style-name='Header'] => p.doc-header:fresh",
-                                "p[style-name='Footer'] => p.doc-footer:fresh",
-                                "p[style-name='Cabeçalho'] => p.doc-header:fresh",
-                                "p[style-name='Rodapé'] => p.doc-footer:fresh",
-                                // Notas de rodapé/fim → classes sentinela
-                                "p[style-name='Footnote Text'] => p.doc-footnote:fresh",
-                                "p[style-name='Endnote Text'] => p.doc-endnote:fresh",
-                                "p[style-name='Texto de nota de rodapé'] => p.doc-footnote:fresh",
-                                "p[style-name='Texto de nota de fim'] => p.doc-endnote:fresh",
-                                "p[style-name='footnote text'] => p.doc-footnote:fresh",
-                                // TOC → classes sentinela
-                                "p[style-name='TOC 1'] => p.doc-toc:fresh",
-                                "p[style-name='TOC 2'] => p.doc-toc:fresh",
-                                "p[style-name='TOC 3'] => p.doc-toc:fresh",
-                                "p[style-name='TOC Heading'] => p.doc-toc:fresh",
-                                "p[style-name='Sumário 1'] => p.doc-toc:fresh",
-                                "p[style-name='Sumário 2'] => p.doc-toc:fresh",
-                                "p[style-name='Sumário 3'] => p.doc-toc:fresh",
-                                // Formatação
-                                "b => strong",
-                                "i => em",
-                                "u => em"
-                            ]
-                        }
-                    );
-
-                    showWarnings(result.messages);
-
-                    var html = result.value;
-                    if (!html || html.trim().length === 0) {
-                        showError('O documento parece estar vazio ou não pode ser lido.');
-                        state.isConverting = false;
-                        dom['selectBtn'].disabled = false;
-                        dom['selectBtn'].textContent = 'Selecionar Arquivo';
-                        dom['progressSection'].style.display = 'none';
-                        return;
-                    }
-
-                    updateProgress(50, 'Sanitizando estrutura HTML...');
-
-                    // Debug: tamanho do HTML bruto
-                    console.log('[DOCX Debug] ═══ PIPELINE DE CONVERSÃO ═══');
-                    console.log('[DOCX Debug] 0. HTML do Mammoth: ' + html.length + ' chars');
-                    console.log('[DOCX Debug] 0. HTML preview: ' + html.substring(0, 300) + '...');
-
-                    // ETAPA 1: Sanitizar HTML (string-based, evita corrupção DOM)
-                    var cleanHtml = sanitizeHtml(html);
-                    console.log('[DOCX Debug] 1. Após sanitizeHtml: ' + cleanHtml.length + ' chars');
-
-                    updateProgress(65, 'Convertendo HTML para Markdown...');
-
-                    // ETAPA 2: Converter HTML sanitizado para Markdown
-                    var mdContent = window.turndownService.turndown(cleanHtml);
-                    console.log('[DOCX Debug] 2. Após Turndown: ' + mdContent.length + ' chars');
-                    if (mdContent.length < 100) {
-                        console.warn('[DOCX Debug] 2. ALERTA: Turndown produziu muito pouco texto!');
-                        console.warn('[DOCX Debug] 2. Conteúdo completo: ' + mdContent);
-                    }
-
-                    // ── Proteção: se Turndown perdeu conteúdo, usar fallback ──
-                    if (mdContent.length < cleanHtml.length * 0.05 && cleanHtml.length > 500) {
-                        console.warn('[DOCX Debug] FALLBACK ATIVADO: Turndown perdeu >95% do conteúdo. Usando conversão simples.');
-                        // Fallback: converter HTML para texto de forma simples
-                        var fallbackDiv = document.createElement('div');
-                        fallbackDiv.innerHTML = cleanHtml;
-                        // Converter headings
-                        fallbackDiv.querySelectorAll('h1,h2,h3,h4,h5,h6').forEach(function(h) {
-                            var level = parseInt(h.tagName.charAt(1));
-                            var prefix = '';
-                            for (var l = 0; l < level; l++) prefix += '#';
-                            h.outerHTML = '\n\n' + prefix + ' ' + h.textContent.trim() + '\n\n';
-                        });
-                        // Converter parágrafos
-                        fallbackDiv.querySelectorAll('p').forEach(function(p) {
-                            p.outerHTML = '\n\n' + p.textContent.trim() + '\n\n';
-                        });
-                        // Converter strong/em
-                        fallbackDiv.querySelectorAll('strong,b').forEach(function(el) {
-                            el.outerHTML = '**' + el.textContent + '**';
-                        });
-                        fallbackDiv.querySelectorAll('em,i').forEach(function(el) {
-                            el.outerHTML = '*' + el.textContent + '*';
-                        });
-                        // Converter listas
-                        fallbackDiv.querySelectorAll('li').forEach(function(li) {
-                            li.outerHTML = '\n- ' + li.textContent.trim();
-                        });
-                        // Extrair tabelas como texto
-                        fallbackDiv.querySelectorAll('table').forEach(function(table) {
-                            var rows = table.querySelectorAll('tr');
-                            var md = '\n\n';
-                            var colCount = 0;
-                            rows.forEach(function(row, idx) {
-                                var cells = row.querySelectorAll('td, th');
-                                var line = '|';
-                                cells.forEach(function(c) { line += ' ' + c.textContent.trim().replace(/\|/g, '\\|').replace(/\n+/g, ' ') + ' |'; });
-                                md += line + '\n';
-                                if (idx === 0) {
-                                    colCount = cells.length;
-                                    var sep = '|';
-                                    for (var j = 0; j < colCount; j++) sep += ' --- |';
-                                    md += sep + '\n';
-                                }
-                            });
-                            table.outerHTML = md + '\n\n';
-                        });
-                        mdContent = fallbackDiv.textContent
-                            .replace(/\n{3,}/g, '\n\n')
-                            .trim();
-                        console.log('[DOCX Debug] 2b. Fallback produziu: ' + mdContent.length + ' chars');
-                    }
-
-                    updateProgress(75, 'Reconstruindo parágrafos...');
-
-                    // ETAPA 3a: Rejunção iterativa de parágrafos fragmentados
-                    var mdRejoined = rejoinBrokenParagraphs(mdContent);
-                    console.log('[DOCX Debug] 3. Após rejoinBrokenParagraphs: ' + mdRejoined.length + ' chars');
-
-                    updateProgress(85, 'Aplicando pós-processamento jurídico...');
-
-                    // ETAPA 3b: Pós-processamento
-                    var processedMarkdown = postProcessLegalMarkdown(mdRejoined);
-                    console.log('[DOCX Debug] 4. Após postProcessLegalMarkdown: ' + processedMarkdown.length + ' chars');
-                    console.log('[DOCX Debug] ═══ FIM DO PIPELINE ═══');
-                    state.currentMarkdown = processedMarkdown;
-
-                    // Atualizar previews
-                    dom['markdown-preview'].value = processedMarkdown;
-                    dom['rendered-preview'].innerHTML = renderMarkdownToHtml(processedMarkdown);
-
-                    var elapsed = performance.now() - startTime;
-                    var lineCount = processedMarkdown.split('\n').length;
-                    showStats(processedMarkdown.length, lineCount, state.images.length, elapsed);
-
-                    updateProgress(100, 'Conversão concluída!');
-
-                    setTimeout(function() {
-                        dom['actionButtons'].style.display = 'flex';
-                    }, 300);
-
-                } catch (error) {
-                    console.error('Erro na conversão:', error);
-                    showError('Erro na conversão: ' + (error.message || 'Verifique se o arquivo não está corrompido.'));
-                    dom['progressSection'].style.display = 'none';
-                } finally {
-                    state.isConverting = false;
-                    dom['selectBtn'].disabled = false;
-                    dom['selectBtn'].textContent = 'Selecionar Arquivo';
-                }
-            }
-
-            function resetUI() {
-                dom['fileInput'].value = '';
-                dom['fileInfo'].style.display = 'none';
-                dom['progressSection'].style.display = 'none';
-                dom['actionButtons'].style.display = 'none';
-                dom['errorMessage'].style.display = 'none';
-                dom['warningList'].style.display = 'none';
-                dom['conversionStats'].style.display = 'none';
-                dom['markdown-preview'].value = '';
-                dom['rendered-preview'].innerHTML = '';
-                state.currentMarkdown = '';
-                state.currentFileName = '';
-                state.images.forEach(function(img) {
-                    if (img.objectUrl) URL.revokeObjectURL(img.objectUrl);
-                });
-                state.images = [];
-                dom['previewTabs'].querySelector('[data-tab="markdown"]').click();
-            }
-
-            function initEvents() {
-                var uploadSection = dom['uploadSection'];
-
-                // Drag and drop
-                uploadSection.addEventListener('dragover', function(e) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    uploadSection.classList.add('dragover');
-                });
-
-                uploadSection.addEventListener('dragleave', function(e) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    uploadSection.classList.remove('dragover');
-                });
-
-                uploadSection.addEventListener('drop', function(e) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    uploadSection.classList.remove('dragover');
-                    var file = e.dataTransfer.files[0];
-                    if (file) processFile(file);
-                });
-
-                // Clique na área de upload também abre seletor
-                uploadSection.addEventListener('click', function(e) {
-                    if (e.target === dom['selectBtn'] || e.target === dom['fileInput']) return;
-                    dom['fileInput'].click();
-                });
-
-                dom['selectBtn'].addEventListener('click', function() {
-                    dom['fileInput'].click();
-                });
-
-                dom['fileInput'].addEventListener('change', function(e) {
-                    var file = e.target.files[0];
-                    if (file) processFile(file);
-                });
-
-                // Abas de preview
-                dom['previewTabs'].addEventListener('click', function(e) {
-                    var target = e.target.closest('li');
-                    if (!target) return;
-
-                    var tabId = target.dataset.tab;
-                    document.querySelectorAll('#previewTabs li').forEach(function(tab) {
-                        tab.classList.remove('active');
-                    });
-                    target.classList.add('active');
-
-                    dom.tabContents.forEach(function(content) {
-                        content.classList.remove('active');
-                    });
-                    document.getElementById(tabId + 'Tab').classList.add('active');
-
-                    if (tabId === 'rendered' && state.currentMarkdown) {
-                        dom['rendered-preview'].innerHTML = renderMarkdownToHtml(state.currentMarkdown);
-                    }
-                });
-
-                // Copiar markdown
-                dom['copyBtn'].addEventListener('click', async function() {
-                    if (!state.currentMarkdown) return;
-                    try {
-                        await navigator.clipboard.writeText(state.currentMarkdown);
-                        dom['copyBtn'].textContent = 'Copiado!';
-                        setTimeout(function() {
-                            dom['copyBtn'].textContent = 'Copiar Markdown';
-                        }, 2000);
-                    } catch (err) {
-                        // Fallback para navegadores sem a Clipboard API
-                        dom['markdown-preview'].select();
-                        document.execCommand('copy');
-                        dom['copyBtn'].textContent = 'Copiado!';
-                        setTimeout(function() {
-                            dom['copyBtn'].textContent = 'Copiar Markdown';
-                        }, 2000);
-                    }
-                });
-
-                // Baixar .md
-                dom['downloadBtn'].addEventListener('click', function() {
-                    if (!state.currentMarkdown) return;
-                    downloadFile(
-                        state.currentMarkdown,
-                        state.currentFileName.replace(/\.docx$/i, '') + '.md',
-                        'text/markdown; charset=utf-8'
-                    );
-                });
-
-                // Baixar .html renderizado
-                dom['downloadHtmlBtn'].addEventListener('click', function() {
-                    if (!state.currentMarkdown) return;
-                    var htmlContent = '<!DOCTYPE html><html><head><meta charset="UTF-8">'
-                        + '<title>' + escapeHtml(state.currentFileName) + '</title>'
-                        + '<style>body{font-family:Georgia,serif;max-width:800px;margin:40px auto;padding:0 20px;line-height:1.8;color:#333}'
-                        + 'h1{border-bottom:2px solid #333;padding-bottom:0.3rem}'
-                        + 'h2{border-bottom:1px solid #999;padding-bottom:0.2rem}'
-                        + 'blockquote{border-left:4px solid #666;margin:1rem 0;padding:0.5rem 1rem;background:#f9f9f9}'
-                        + 'table{border-collapse:collapse;width:100%}th,td{border:1px solid #ddd;padding:8px}th{background:#f0f0f0}'
-                        + '</style></head><body>'
-                        + renderMarkdownToHtml(state.currentMarkdown)
-                        + '</body></html>';
-                    downloadFile(
-                        htmlContent,
-                        state.currentFileName.replace(/\.docx$/i, '') + '.html',
-                        'text/html; charset=utf-8'
-                    );
-                });
-
-                // Baixar .zip (markdown + imagens)
-                dom['downloadZipBtn'].addEventListener('click', async function() {
-                    if (!state.currentMarkdown) return;
-                    if (!state.jszipLoaded || !window.JSZip) {
-                        alert('Biblioteca JSZip ainda não carregou. Tente novamente em instantes.');
-                        return;
-                    }
-
-                    var baseName = state.currentFileName.replace(/\.docx$/i, '');
-                    var zip = new JSZip();
-
-                    // Adicionar o markdown
-                    zip.file(baseName + '.md', state.currentMarkdown);
-
-                    // Adicionar imagens na pasta images/
-                    if (state.images.length > 0) {
-                        var imgFolder = zip.folder('images');
-                        for (var i = 0; i < state.images.length; i++) {
-                            imgFolder.file(state.images[i].name, state.images[i].blob);
-                        }
-                    }
-
-                    var blob = await zip.generateAsync({ type: 'blob' });
-                    downloadFile(blob, baseName + '.zip', 'application/zip');
-                });
-
-                // Limpar
-                dom['clearBtn'].addEventListener('click', resetUI);
-
-                // Permitir editar o markdown e re-renderizar
-                dom['markdown-preview'].addEventListener('input', function() {
-                    state.currentMarkdown = dom['markdown-preview'].value;
-                });
-            }
-
-            function downloadFile(content, filename, mimeType) {
-                var blob = (content instanceof Blob)
-                    ? content
-                    : new Blob([content], { type: mimeType });
-                var url = URL.createObjectURL(blob);
-                var a = document.createElement('a');
-                a.href = url;
-                a.download = filename;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                URL.revokeObjectURL(url);
-            }
-
-            // Inicialização
-            async function initApp() {
-                cacheDom();
-
-                try {
-                    // Carregar dependências em paralelo
-                    await Promise.all([
-                        loadScript('https://cdn.jsdelivr.net/npm/mammoth@1.12.0/mammoth.browser.min.js'),
-                        loadScript('https://cdn.jsdelivr.net/npm/turndown@7.2.2/dist/turndown.js')
-                    ]);
-
-                    window.turndownService = configureTurndown();
-
-                    // Carregar libs opcionais (não-bloqueante)
-                    loadScript('https://cdn.jsdelivr.net/npm/marked@17.0.5/marked.min.js')
-                        .then(function() {
-                            state.markedLoaded = true;
-                            if (window.marked) {
-                                marked.use({ breaks: true, gfm: true });
-                            }
-                        })
-                        .catch(function() {
-                            console.warn('marked.js não carregou; usando renderizador fallback.');
-                        });
-
-                    loadScript('https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js')
-                        .then(function() {
-                            state.jszipLoaded = true;
-                        })
-                        .catch(function() {
-                            console.warn('JSZip não carregou; download ZIP indisponível.');
-                        });
-
-                    initEvents();
-
-                } catch (error) {
-                    console.error('Erro ao carregar bibliotecas:', error);
-                    showError('Erro ao inicializar. Verifique sua conexão e recarregue a página.');
-                }
-            }
-
-            // ═══════════════════════════════════════════════════════
-            // TESTES DE REGRESSÃO INLINE
-            // Executar no console: __runDocxConverterTests()
-            // ═══════════════════════════════════════════════════════
-
-            window.__runDocxConverterTests = function() {
-                var passed = 0;
-                var failed = 0;
-                var results = [];
-
-                function assert(name, condition, detail) {
-                    if (condition) {
-                        passed++;
-                        results.push('PASS: ' + name);
-                    } else {
-                        failed++;
-                        results.push('FAIL: ' + name + (detail ? ' — ' + detail : ''));
-                    }
-                }
-
-                // ── Teste 1: Remoção de field codes ──
-                var md1 = postProcessLegalMarkdown('Conforme Art. 5 Erro! Indicador não definido. do regulamento.');
-                assert('Remove field code PT',
-                    md1.indexOf('Erro!') === -1,
-                    'Encontrou: ' + md1);
-
-                var md1b = postProcessLegalMarkdown('See section Error! Bookmark not defined. above.');
-                assert('Remove field code EN',
-                    md1b.indexOf('Error!') === -1,
-                    'Encontrou: ' + md1b);
-
-                // ── Teste 2: Remoção de paginação ──
-                var md2 = postProcessLegalMarkdown('Texto antes\nPágina 1 de 10\nTexto depois');
-                assert('Remove marcador de página completo',
-                    md2.indexOf('Página 1 de 10') === -1,
-                    'Encontrou: ' + md2);
-
-                var md2b = postProcessLegalMarkdown('Texto\n— 15 —\nMais texto');
-                assert('Remove número de página com traço',
-                    md2b.indexOf('— 15 —') === -1,
-                    'Encontrou: ' + md2b);
-
-                // ── Teste 2c: NÃO remover "Página X" sem "de Y" (pode ser conteúdo) ──
-                var md2c = postProcessLegalMarkdown('Página 5 trata do tema');
-                assert('Preserva "Página X" sem "de Y"',
-                    md2c.indexOf('Página 5') !== -1,
-                    'Removeu indevidamente: ' + md2c);
-
-                // ── Teste 3: Limpeza de sumário ──
-                var md3 = postProcessLegalMarkdown('Capítulo 1.........5\nCapítulo 2..........12');
-                assert('Limpa leader dots do sumário',
-                    md3.indexOf('........') === -1 && md3.indexOf('Capítulo 1') !== -1,
-                    'Encontrou: ' + md3);
-
-                // ── Teste 4: Remoção de base64 ──
-                var md4 = postProcessLegalMarkdown('Texto ![img](data:image/png;base64,iVBOR) mais texto');
-                assert('Remove imagem base64',
-                    md4.indexOf('data:image') === -1,
-                    'Encontrou: ' + md4);
-
-                // ── Teste 5: Reconstrução de parágrafos (rejoinBrokenParagraphs) ──
-                var md5 = rejoinBrokenParagraphs('Esta frase foi quebrada\npor paginação artificial.');
-                assert('Rejunta parágrafo fragmentado',
-                    md5.indexOf('quebrada por') !== -1,
-                    'Encontrou: ' + md5);
-
-                // ── Teste 5b: Rejunção iterativa (3+ linhas) ──
-                var md5b = rejoinBrokenParagraphs('O contrato foi assinado\npelas partes\nem janeiro.');
-                assert('Rejunta parágrafo fragmentado em 3 linhas',
-                    md5b.indexOf('assinado pelas partes em') !== -1,
-                    'Encontrou: ' + md5b);
-
-                // ── Teste 6: Não rejuntar após pontuação ──
-                var md6 = rejoinBrokenParagraphs('Frase completa.\nNova frase aqui.');
-                assert('Preserva quebra após pontuação',
-                    md6.indexOf('.\n') !== -1,
-                    'Encontrou: ' + md6);
-
-                // ── Teste 7: Remoção de linhas duplicadas ──
-                var md7 = postProcessLegalMarkdown('Esta linha está duplicada\nEsta linha está duplicada');
-                var occurrences = md7.split('Esta linha está duplicada').length - 1;
-                assert('Remove linhas duplicadas',
-                    occurrences === 1,
-                    'Ocorrências: ' + occurrences);
-
-                // ── Teste 8: Headings jurídicos ──
-                var md8 = postProcessLegalMarkdown('Art. 15 Dos direitos fundamentais');
-                assert('Promove artigo para heading',
-                    md8.indexOf('### Art. 15') !== -1,
-                    'Encontrou: ' + md8);
-
-                // ── Teste 9: Sanitização HTML - field codes ──
-                var html9 = '<p>Ver Erro! Indicador não definido. na seção 3.</p>';
-                var str9 = sanitizeHtml(html9);
-                assert('Sanitiza field codes no HTML',
-                    str9.indexOf('Erro!') === -1,
-                    'Encontrou: ' + str9);
-
-                // ── Teste 10: Sanitização preserva tabelas (tratadas pelo Turndown) ──
-                var html10 = '<table><tr><td><p>Texto simples</p></td></tr></table>';
-                var str10 = sanitizeHtml(html10);
-                assert('Preserva tabelas no sanitizeHtml (tratadas pelo Turndown)',
-                    str10.indexOf('<table>') !== -1,
-                    'Tabela removida indevidamente');
-
-                // ── Teste 10b: Preserva tabela de 2 colunas com conteúdo longo ──
-                var html10b = '<table><tr><td>' + 'x'.repeat(350) + '</td><td>' + 'y'.repeat(350) + '</td></tr>'
-                    + '<tr><td>Dados A</td><td>Dados B</td></tr></table>';
-                var str10b = sanitizeHtml(html10b);
-                assert('Preserva tabela de 2 colunas com conteúdo longo',
-                    str10b.indexOf('<table>') !== -1,
-                    'Removeu tabela comparativa indevidamente');
-
-                // ── Teste 11: Tabela real preservada ──
-                var html11 = '<table><tr><th>Nome</th><th>Cargo</th></tr>'
-                    + '<tr><td>João</td><td>Advogado</td></tr>'
-                    + '<tr><td>Maria</td><td>Juíza</td></tr></table>';
-                var str11 = sanitizeHtml(html11);
-                assert('Preserva tabela real de dados',
-                    str11.indexOf('<table>') !== -1,
-                    'Tabela foi removida indevidamente');
-
-                // ── Teste 12: Preservar números isolados (podem ser conteúdo) ──
-                var html12 = '<p>15</p><p>Conteúdo real</p><p>16</p>';
-                var str12 = sanitizeHtml(html12);
-                assert('Preserva parágrafos com números (não agressivo)',
-                    str12.indexOf('Conteúdo real') !== -1,
-                    'Encontrou: ' + str12);
-
-                // ── Teste 12b: Remove "Página X de Y" ──
-                var html12b = '<p>Página 3 de 15</p><p>Conteúdo real</p>';
-                var str12b = sanitizeHtml(html12b);
-                assert('Remove Página X de Y',
-                    str12b.indexOf('Página 3 de 15') === -1 &&
-                    str12b.indexOf('Conteúdo real') !== -1,
-                    'Encontrou: ' + str12b);
-
-                // ── Teste 14: Remoção de headers/footers por classe sentinela ──
-                var html14 = '<p class="doc-header">Cabeçalho da empresa</p><p>Texto real</p><p class="doc-footer">Página 1</p>';
-                var str14 = sanitizeHtml(html14);
-                assert('Remove header/footer por classe sentinela',
-                    str14.indexOf('Cabeçalho da empresa') === -1 &&
-                    str14.indexOf('Texto real') !== -1,
-                    'Encontrou: ' + str14);
-
-                // ── Teste 15: Remoção de notas de rodapé por classe sentinela ──
-                var html15 = '<p>Texto principal</p><p class="doc-footnote">Nota: referência legal</p>';
-                var str15 = sanitizeHtml(html15);
-                assert('Remove footnote inline e adiciona ao final',
-                    str15.indexOf('Texto principal') !== -1 &&
-                    str15.indexOf('[1] Nota: referência legal') !== -1,
-                    'Encontrou: ' + str15);
-
-                // ── Teste 16: Remoção de TOC por classe sentinela ──
-                var html16 = '<p class="doc-toc">Capítulo 1</p><p class="doc-toc">Capítulo 2</p><p>Corpo do texto</p>';
-                var str16 = sanitizeHtml(html16);
-                assert('Remove TOC por classe sentinela',
-                    str16.indexOf('Capítulo 1') === -1 &&
-                    str16.indexOf('Corpo do texto') !== -1,
-                    'Encontrou: ' + str16);
-
-                // ── Teste 17: Preserva superscript (não remover agressivamente) ──
-                var html17 = '<p>Conforme a lei<sup>1</sup> vigente</p>';
-                var str17 = sanitizeHtml(html17);
-                assert('Preserva texto com superscript',
-                    str17.indexOf('vigente') !== -1,
-                    'Encontrou: ' + str17);
-
-                // ── Teste 13: Tabelas degeneradas no Markdown ──
-                var md13 = postProcessLegalMarkdown('Texto\n| Col1 | Col2 |\n| --- | --- |\nMais texto');
-                assert('Remove tabela só com header',
-                    md13.indexOf('| Col1') === -1,
-                    'Encontrou: ' + md13);
-
-                // Resultado
-                var summary = '\n══════════════════════════════\n'
-                    + 'TESTES: ' + (passed + failed) + ' total, '
-                    + passed + ' passou, '
-                    + failed + ' falhou\n'
-                    + '══════════════════════════════\n';
-
-                console.log(summary);
-                results.forEach(function(r) { console.log(r); });
-
-                return { passed: passed, failed: failed, results: results };
-            };
-
-            document.addEventListener('DOMContentLoaded', initApp);
-        })();
-    </script>
 </body>
 </html>
