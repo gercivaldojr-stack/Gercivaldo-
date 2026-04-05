@@ -64,9 +64,10 @@ Exemplos:
     )
     parser.add_argument(
         "--mode",
-        choices=["forense", "doutrina"],
+        choices=["forense", "doutrina", "google"],
         default=None,
-        help="Modo de heuristicas (padrao: forense).",
+        help="Modo de heuristicas: forense (pecas processuais), "
+             "doutrina (livros/artigos), google (negrito inline, sem headings).",
     )
 
     # Funcionalidades
@@ -125,9 +126,9 @@ Exemplos:
                       help='Paginas a processar (1-based). Ex: "1-10", "1,5,10-20". '
                            'Pagina 1 = primeira pagina do documento.')
     perf.add_argument("--workers", type=int, default=None,
-                      help="Workers para processamento paralelo. "
+                      help="Workers para processamento paralelo de chunks dentro de PDFs. "
                            "0 = sequencial (padrao). -1 = auto (detectar CPUs). "
-                           "Aplica-se a --batch e chunks de PDFs grandes.")
+                           "Em --batch, o paralelismo e aplicado dentro de cada arquivo.")
     perf.add_argument("--chunk-size", type=int, default=None,
                       help="Paginas por chunk para PDFs grandes. Processa N paginas por "
                            "vez, liberando memoria entre chunks. Recomendado: 50-200 para "
