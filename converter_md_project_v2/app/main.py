@@ -235,8 +235,11 @@ with st.sidebar:
 
     workers_input = st.number_input(
         "Workers paralelos",
-        min_value=0, max_value=32, value=0, step=1,
-        help="0 = sequencial. -1 = auto-detectar CPUs. >0 = fixo.",
+        min_value=0,
+        max_value=32,
+        value=0,
+        step=1,
+        help="0 = sequencial. >0 = número fixo de workers para chunks de PDF.",
     )
 
     st.divider()
