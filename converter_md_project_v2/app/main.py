@@ -177,6 +177,7 @@ with st.sidebar:
         min_value=1,
         max_value=500,
         value=30,
+        step=1,
         disabled=not ocr_enabled,
         help="Páginas com menos caracteres que este valor receberão OCR.",
     )
@@ -227,13 +228,14 @@ with st.sidebar:
         min_value=0,
         max_value=10000,
         value=0,
+        step=1,
         help="Processa N páginas por vez, liberando memória entre lotes. "
              "0 = processar tudo de uma vez. Aplica-se apenas a PDFs.",
     )
 
     workers_input = st.number_input(
         "Workers paralelos",
-        min_value=0, max_value=32, value=0,
+        min_value=0, max_value=32, value=0, step=1,
         help="0 = sequencial. -1 = auto-detectar CPUs. >0 = fixo.",
     )
 
@@ -261,8 +263,8 @@ if uploaded_files:
 
         # Preparar valores de page_range e chunk_size
         page_range_val = page_range_input.strip() if page_range_input.strip() else None
-        chunk_size_val = chunk_size_input if chunk_size_input >= 1 else None
-        workers_val = workers_input if workers_input != 0 else None
+        chunk_size_val = int(chunk_size_input) if chunk_size_input >= 1 else None
+        workers_val = int(workers_input) if workers_input != 0 else None
 
         for i, uploaded_file in enumerate(uploaded_files):
             progress_text = f"Processando {i + 1}/{len(uploaded_files)}: {uploaded_file.name}"
@@ -285,7 +287,7 @@ if uploaded_files:
                 generate_toc_flag=generate_toc_opt,
                 ocr_enabled=ocr_enabled and is_pdf,
                 ocr_lang=ocr_lang,
-                ocr_threshold=ocr_threshold,
+                ocr_threshold=int(ocr_threshold),
                 page_range=page_range_val if is_pdf else None,
                 chunk_size=chunk_size_val if is_pdf else None,
                 detect_columns=detect_columns_opt and is_pdf,
