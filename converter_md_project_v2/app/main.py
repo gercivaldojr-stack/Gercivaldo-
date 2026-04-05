@@ -393,8 +393,13 @@ if uploaded_files:
             zip_buffer = io.BytesIO()
             with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
                 for result in successful_results:
-                    md_filename = Path(result.filename).stem + ".md"
-                    zf.writestr(md_filename, result.markdown)
+                    stem = Path(result.filename).stem
+                    if output_format_key == "html" and result.html:
+                        zf.writestr(stem + ".html", result.html)
+                    elif output_format_key == "docx" and result.docx_bytes:
+                        zf.writestr(stem + ".docx", result.docx_bytes)
+                    else:
+                        zf.writestr(stem + ".md", result.markdown)
 
             st.download_button(
                 label="📦 Baixar todos (ZIP)",
