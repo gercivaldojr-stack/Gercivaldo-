@@ -95,9 +95,12 @@ def _strip_existing_frontmatter(text: str) -> str:
 class ConversionResult:
     """Resultado da conversão de um documento."""
     markdown: str = ""
+    html: str | None = None
+    docx_bytes: bytes | None = None
     pieces: list[dict] = field(default_factory=list)
     filename: str = ""
     mode: str = "forense"
+    output_format: str = "md"
     success: bool = True
     error: str = ""
     stats: dict = field(default_factory=dict)
@@ -122,6 +125,8 @@ def convert_document(
     ocr_threshold: int = 30,
     page_range: str | None = None,
     chunk_size: int | None = None,
+    detect_columns: bool = True,
+    output_format: str = "md",
 ) -> ConversionResult:
     """Converte um documento jurídico para Markdown estruturado.
 
@@ -132,22 +137,27 @@ def convert_document(
         mode: 'forense' ou 'doutrina'.
         separate: Se True, tenta separar peças processuais.
         remove_headers_footers: Se True, remove cabeçalhos/rodapés repetidos.
-        detect_citations: Se True, detecta citações jurisprudenciais como blockquote (P7).
-        extract_metadata: Se True, extrai metadados expandidos da peça (P8).
-        extract_procedural: Se True, extrai metadados processuais (M1 v4.1).
-        separate_enums: Se True, separa itens enumerados com ; (M2 v4.1).
-        wrap_notes: Se True, demarca notas internas em blockquote (M3 v4.1).
+        detect_citations: Se True, detecta citações jurisprudenciais.
+        extract_metadata: Se True, extrai metadados expandidos da peça.
+        extract_procedural: Se True, extrai metadados processuais.
+        separate_enums: Se True, separa itens enumerados com ;.
+        wrap_notes: Se True, demarca notas internas em blockquote.
         ocr_enabled: Se True, aplica OCR seletivo por página.
         ocr_lang: Idioma do Tesseract (padrão: por).
         ocr_threshold: Mínimo de chars para considerar página com texto.
-        page_range: Páginas a processar, 1-based (ex: "1-50", "1,5,10-20"). Apenas PDF.
-        chunk_size: Páginas por chunk para PDFs grandes. Processa N páginas por
-            vez e libera memória entre chunks. None = processar tudo de uma vez.
+        page_range: Páginas 1-based (ex: "1-50"). Apenas PDF.
+        chunk_size: Páginas por chunk. None = tudo de uma vez.
+        detect_columns: Se True, detecta PDFs com 2 colunas.
+        output_format: "md", "html" ou "docx".
 
     Returns:
-        ConversionResult com o Markdown e metadados.
+        ConversionResult com o Markdown e opcionalmente HTML/DOCX.
     """
-    result = ConversionResult(filename=filename or file_path or "unknown", mode=mode)
+    result = ConversionResult(
+        filename=filename or file_path or "unknown",
+        mode=mode,
+        output_format=output_format,
+    )
 
     try:
         # 1. Extração
@@ -160,6 +170,7 @@ def convert_document(
             ocr_threshold=ocr_threshold,
             page_range=page_range,
             chunk_size=chunk_size,
+            detect_columns=detect_columns,
         )
 
         if not raw_text.strip():
@@ -230,6 +241,17 @@ def convert_document(
 
         result.stats["chars_final"] = len(result.markdown)
         result.stats["lines_final"] = result.markdown.count("\n")
+
+        # 5. Exportação para formatos alternativos
+        if output_format == "html":
+            from .html_exporter import markdown_to_html
+            result.html = markdown_to_html(result.markdown)
+            logger.info("HTML gerado: %d chars", len(result.html))
+        elif output_format == "docx":
+            from .docx_exporter import markdown_to_docx
+            result.docx_bytes = markdown_to_docx(result.markdown)
+            logger.info("DOCX gerado: %d bytes", len(result.docx_bytes))
+
         logger.info("Conversão concluída: %s", result.filename)
 
     except Exception as e:
@@ -257,6 +279,8 @@ def convert_batch(
     ocr_threshold: int = 30,
     page_range: str | None = None,
     chunk_size: int | None = None,
+    detect_columns: bool = True,
+    output_format: str = "md",
 ) -> list[ConversionResult]:
     """Converte múltiplos documentos em lote.
 
@@ -290,6 +314,8 @@ def convert_batch(
             ocr_threshold=ocr_threshold,
             page_range=page_range,
             chunk_size=chunk_size,
+            detect_columns=detect_columns,
+            output_format=output_format,
         )
         results.append(result)
 

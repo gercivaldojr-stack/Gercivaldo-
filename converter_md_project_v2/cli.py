@@ -78,6 +78,13 @@ Exemplos:
     feat.add_argument("--enums", action="store_true", help="Separar itens enumerados com ;")
     feat.add_argument("--notes", action="store_true", help="Demarcar notas internas em blockquote.")
     feat.add_argument("--no-hf", action="store_true", help="Nao remover cabecalhos/rodapes repetidos.")
+    feat.add_argument("--columns", action="store_true", default=None,
+                      help="Detectar layout de 2 colunas em PDFs (padrao: ativo).")
+    feat.add_argument("--no-columns", action="store_true",
+                      help="Desabilitar deteccao de colunas.")
+    feat.add_argument("--format", choices=["md", "html", "docx"], default=None,
+                      dest="output_format",
+                      help="Formato de saida: md (padrao), html ou docx.")
 
     # OCR
     ocr = parser.add_argument_group("OCR")
@@ -137,6 +144,8 @@ def _convert_single(input_path: Path, output_path: Path, cfg: dict) -> bool:
         ocr_threshold=cfg.get("ocr_threshold", 30),
         page_range=cfg.get("pages"),
         chunk_size=cfg.get("chunk_size"),
+        detect_columns=cfg.get("detect_columns", True),
+        output_format=cfg.get("output_format", "md"),
     )
     elapsed = time.monotonic() - start
 
@@ -145,7 +154,15 @@ def _convert_single(input_path: Path, output_path: Path, cfg: dict) -> bool:
         return False
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(result.markdown, encoding="utf-8")
+    fmt = cfg.get("output_format", "md")
+    if fmt == "html" and result.html:
+        output_path = output_path.with_suffix(".html")
+        output_path.write_text(result.html, encoding="utf-8")
+    elif fmt == "docx" and result.docx_bytes:
+        output_path = output_path.with_suffix(".docx")
+        output_path.write_bytes(result.docx_bytes)
+    else:
+        output_path.write_text(result.markdown, encoding="utf-8")
 
     stats = result.stats
     print(f"OK: {input_path.name}")
@@ -204,7 +221,9 @@ def main(argv: list[str] | None = None) -> int:
         ok_count = 0
         for i, f in enumerate(files, 1):
             print(f"\n[{i}/{len(files)}] ", end="")
-            out = output_dir / f.with_suffix(".md").name
+            ext_map = {"md": ".md", "html": ".html", "docx": ".docx"}
+            out_ext = ext_map.get(cfg.get("output_format", "md"), ".md")
+            out = output_dir / f.with_suffix(out_ext).name
             if _convert_single(f, out, cfg):
                 ok_count += 1
 
