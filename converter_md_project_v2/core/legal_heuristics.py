@@ -353,7 +353,7 @@ def apply_legal_heuristics(
         structured = format_signatures(structured)
 
     # F5: Preencher gaps de numeração (seções sem título detectado)
-    if mode == "forense":
+    if mode in ("forense", "doutrina"):
         structured = fill_heading_gaps(structured)
     return structured
 
@@ -547,7 +547,26 @@ def fill_heading_gaps(md: str) -> str:
                 while best_pos < next_pos and lines_list[best_pos].strip():
                     best_pos += 1
 
-                heading = "## " + str(num) + ". [SEÇÃO SEM TÍTULO DETECTADO]"
+                # Antes de inserir placeholder, tentar encontrar título perdido
+                candidate_title = None
+                scan_start = max(0, best_pos - 10)
+                for scan_idx in range(scan_start, best_pos):
+                    scan_line = lines_list[scan_idx].strip()
+                    if not scan_line or scan_line.startswith("#"):
+                        continue
+                    if len(scan_line) < 100:
+                        scan_upper = sum(1 for c in scan_line if c.isupper())
+                        scan_alpha = sum(1 for c in scan_line if c.isalpha())
+                        if scan_alpha > 3 and scan_upper / scan_alpha > 0.6:
+                            candidate_title = scan_line
+                            # Remover a linha original pois será promovida
+                            lines_list[scan_idx] = ""
+                            break
+
+                if candidate_title:
+                    heading = f"## {num}. {candidate_title}"
+                else:
+                    heading = f"## {num}. [SEÇÃO SEM TÍTULO DETECTADO]"
                 insertions.append((best_pos, heading))
 
             for pos, heading in sorted(insertions, reverse=True):
