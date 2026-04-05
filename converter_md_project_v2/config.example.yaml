@@ -28,6 +28,12 @@ wrap_notes: false
 # Remover cabeçalhos/rodapés repetidos (false = não remover)
 no_hf: false
 
+# Detectar layout de 2 colunas em PDFs (reordena na ordem de leitura)
+detect_columns: true
+
+# Formato de saída: "md" (Markdown), "html" (HTML com CSS jurídico), "docx" (Word)
+output_format: "md"
+
 # --- OCR ---
 # Habilitar OCR seletivo (requer pytesseract + Tesseract instalado)
 ocr: false

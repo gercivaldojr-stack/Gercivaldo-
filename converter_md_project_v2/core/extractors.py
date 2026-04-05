@@ -39,6 +39,7 @@ def extract_text(
     ocr_threshold: int = 30,
     page_range: str | None = None,
     chunk_size: int | None = None,
+    detect_columns: bool = True,
 ) -> str:
     """Extrai texto de um arquivo com base na extensão.
 
@@ -85,6 +86,7 @@ def extract_text(
                 ocr_threshold=ocr_threshold,
                 page_range=page_range,
                 chunk_size=chunk_size,
+                detect_columns=detect_columns,
             )
 
         if file_bytes is not None:
@@ -301,7 +303,8 @@ def _ocr_page(page, lang: str = "por") -> str:
 
 def _extract_single_page(page, page_idx: int, remove_set: set,
                          ocr_enabled: bool, ocr_lang: str,
-                         ocr_threshold: int) -> tuple[str, bool]:
+                         ocr_threshold: int,
+                         detect_columns: bool = True) -> tuple[str, bool]:
     """Extrai texto de uma única página PDF.
 
     Returns:
@@ -309,6 +312,36 @@ def _extract_single_page(page, page_idx: int, remove_set: set,
     """
     page_parts = []
     used_ocr = False
+
+    # Detecção de colunas: se habilitado, usa ordem de leitura inteligente
+    if detect_columns:
+        from .column_detector import (
+            _is_two_column_layout,
+            detect_and_reorder_columns,
+        )
+        blocks_raw = page.get_text("dict")["blocks"]
+        text_blocks = []
+        for blk in blocks_raw:
+            if blk["type"] != 0:
+                continue
+            txt = ""
+            for ln in blk.get("lines", []):
+                for sp in ln.get("spans", []):
+                    txt += sp.get("text", "")
+            if txt.strip():
+                text_blocks.append({
+                    "x0": blk["bbox"][0], "y0": blk["bbox"][1],
+                    "x1": blk["bbox"][2], "y1": blk["bbox"][3],
+                    "text": txt.strip(),
+                })
+        if _is_two_column_layout(text_blocks, page.rect.width):
+            page_text = detect_and_reorder_columns(page)
+            if ocr_enabled and len(page_text.strip()) < ocr_threshold:
+                ocr_text = _ocr_page(page, lang=ocr_lang)
+                if ocr_text.strip():
+                    page_text = ocr_text
+                    used_ocr = True
+            return page_text, used_ocr
 
     # Tentar extrair tabelas
     tables = []
@@ -379,6 +412,7 @@ def _extract_pdf(
     ocr_threshold: int = 30,
     page_range: str | None = None,
     chunk_size: int | None = None,
+    detect_columns: bool = True,
     **kwargs,
 ) -> str:
     """Extrai texto de PDF usando PyMuPDF (fitz).
@@ -463,6 +497,7 @@ def _extract_pdf(
                     page_text, used_ocr = _extract_single_page(
                         page, page_idx, remove_set,
                         ocr_enabled, ocr_lang, ocr_threshold,
+                        detect_columns=detect_columns,
                     )
                     if used_ocr:
                         ocr_count += 1

@@ -1,5 +1,16 @@
 # Changelog
 
+## v5.1 (2026-04-05)
+
+### Novos recursos
+
+- **Detecção de colunas**: `core/column_detector.py` detecta PDFs com layout de 2 colunas e reordena os blocos de texto na ordem correta de leitura. Habilitado por padrão, desativável via `--no-columns` na CLI ou checkbox na interface Streamlit.
+- **Exportação HTML**: `core/html_exporter.py` converte Markdown para HTML completo com CSS jurídico (fonte serif, blockquotes com borda, tabelas com bordas). Usa biblioteca `markdown` com extensões tables, fenced_code e toc.
+- **Exportação DOCX**: `core/docx_exporter.py` converte Markdown para DOCX via `python-docx`. Suporta headings H1-H3, parágrafos, blockquotes com indentação e itálico, listas bullet, tabelas e separadores.
+- **Formato de saída configurável**: `--format {md,html,docx}` na CLI. Selectbox na interface Streamlit.
+- **ConversionResult expandido**: campos `.html` e `.docx_bytes` (None quando não solicitado).
+- **Parâmetros novos em pipeline/CLI/config/Streamlit**: `detect_columns`, `output_format`.
+
 ## v4.1 (2026-04-01)
 
 ### Novos recursos (M1–M5)

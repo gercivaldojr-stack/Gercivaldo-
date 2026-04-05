@@ -27,6 +27,8 @@ DEFAULTS = {
     "ocr_threshold": 30,
     "pages": None,
     "chunk_size": None,
+    "detect_columns": True,
+    "output_format": "md",
 }
 
 
@@ -96,6 +98,12 @@ def merge_cli_into_config(cfg: dict, args) -> dict:
         result["pages"] = args.pages
     if hasattr(args, "chunk_size") and args.chunk_size is not None:
         result["chunk_size"] = args.chunk_size
+    if hasattr(args, "no_columns") and args.no_columns:
+        result["detect_columns"] = False
+    elif hasattr(args, "columns") and args.columns:
+        result["detect_columns"] = True
+    if hasattr(args, "output_format") and args.output_format is not None:
+        result["output_format"] = args.output_format
 
     # Garantir defaults
     for key, default in DEFAULTS.items():

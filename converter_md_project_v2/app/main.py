@@ -180,6 +180,27 @@ with st.sidebar:
         help="Páginas com menos caracteres que este valor receberão OCR.",
     )
 
+    # ── Layout e formato ──
+    st.divider()
+    st.subheader("Layout e formato")
+
+    detect_columns_opt = st.checkbox(
+        "Detectar layout de 2 colunas (PDFs)",
+        value=True,
+        help="Detecta PDFs com layout de 2 colunas e reordena texto "
+             "na ordem correta de leitura.",
+    )
+
+    output_format = st.selectbox(
+        "Formato de saída",
+        options=["Markdown", "HTML", "DOCX"],
+        index=0,
+        help="Markdown: arquivo .md. HTML: documento com CSS jurídico. "
+             "DOCX: documento Word.",
+    )
+    format_map = {"Markdown": "md", "HTML": "html", "DOCX": "docx"}
+    output_format_key = format_map[output_format]
+
     # ── Performance / PDFs grandes ──
     st.divider()
     st.subheader("Performance / PDFs grandes")
@@ -251,6 +272,8 @@ if uploaded_files:
                 ocr_threshold=ocr_threshold,
                 page_range=page_range_val if is_pdf else None,
                 chunk_size=chunk_size_val if is_pdf else None,
+                detect_columns=detect_columns_opt and is_pdf,
+                output_format=output_format_key,
             )
             results.append(result)
 
@@ -295,13 +318,28 @@ if uploaded_files:
                     with tab_raw:
                         st.code(result.markdown, language="markdown")
 
-                    # Download individual
-                    md_filename = Path(result.filename).stem + ".md"
+                    # Download individual (formato selecionado)
+                    stem = Path(result.filename).stem
+                    if output_format_key == "html" and result.html:
+                        dl_name = stem + ".html"
+                        dl_data = result.html.encode("utf-8")
+                        dl_mime = "text/html"
+                    elif output_format_key == "docx" and result.docx_bytes:
+                        dl_name = stem + ".docx"
+                        dl_data = result.docx_bytes
+                        dl_mime = (
+                            "application/vnd.openxmlformats-"
+                            "officedocument.wordprocessingml.document"
+                        )
+                    else:
+                        dl_name = stem + ".md"
+                        dl_data = result.markdown.encode("utf-8")
+                        dl_mime = "text/markdown"
                     st.download_button(
-                        label=f"⬇️ Baixar {md_filename}",
-                        data=result.markdown.encode("utf-8"),
-                        file_name=md_filename,
-                        mime="text/markdown",
+                        label=f"⬇️ Baixar {dl_name}",
+                        data=dl_data,
+                        file_name=dl_name,
+                        mime=dl_mime,
                     )
 
                     # Download de peças separadas

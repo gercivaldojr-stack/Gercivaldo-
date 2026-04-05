@@ -9,7 +9,9 @@ Otimizado para rodar em maquinas sem GPU e com RAM limitada.
 ## Funcionalidades
 
 - **Extracao nativa rapida**: PDF (PyMuPDF com tabelas), DOCX (paragrafos + tabelas intercalados), TXT, MD
+- **Deteccao de colunas**: detecta PDFs com layout de 2 colunas e reordena texto na ordem de leitura
 - **OCR seletivo por pagina**: aplica OCR apenas em paginas sem texto nativo (requer Tesseract)
+- **Exportacao multi-formato**: saida em Markdown, HTML (com CSS juridico) ou DOCX (Word)
 - **Limpeza**: hifenizacao, headers/footers repetidos (preserva 1a ocorrencia), paginacao residual, glyphs corrompidos, e-reader boilerplate
 - **Reconexao CNJ**: siglas (HC, REsp, ADI...) partidas por quebra de linha
 - **Juncao de paragrafos**: preposicoes no final forcam juncao; protege tabelas, headings, listas, alineas
@@ -71,6 +73,15 @@ python cli.py ./autos/ --batch -o ./saida/
 
 # Com arquivo de configuracao
 python cli.py doc.pdf --config config.yaml
+
+# Exportar como HTML
+python cli.py peticao.pdf --format html -o peticao.html
+
+# Exportar como DOCX
+python cli.py peticao.pdf --format docx -o peticao.docx
+
+# Desabilitar deteccao de colunas
+python cli.py doutrina.pdf --no-columns
 
 # Todas as opcoes
 python cli.py doc.pdf --toc --separate --metadata --procedural --enums --notes
