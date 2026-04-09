@@ -1,5 +1,23 @@
 # Changelog
 
+## v7.2 (2026-04-09)
+
+### Novos recursos
+
+- **OCR seletivo funcional no Streamlit Cloud**: criado `packages.txt` na raiz do repositório com pacotes Tesseract OCR (`tesseract-ocr`, `tesseract-ocr-por`, `tesseract-ocr-eng`, `tesseract-ocr-spa`, `tesseract-ocr-fra`, `tesseract-ocr-deu`, `tesseract-ocr-ita`) para instalação automática via Streamlit Cloud.
+- **Detecção automática de Tesseract na UI** (`app/main.py`): novo decorator `@st.cache_resource` com `_check_tesseract()` verifica disponibilidade, versão e idiomas instalados do Tesseract no boot da aplicação. Indicador visual na sidebar: ✅ verde com versão e idiomas se disponível, ⚠️ amarelo se ausente. Checkbox "Habilitar OCR seletivo" automaticamente desabilitado quando Tesseract não está instalado.
+- **Filtragem de idiomas OCR**: selectbox de idioma mostra apenas idiomas realmente instalados no Tesseract do ambiente, evitando erros em runtime.
+- **Estatísticas de OCR nos resultados**: pipeline agora rastreia `total_pages` e `ocr_pages` no dict de stats. Interface exibe quantas páginas usaram OCR vs. texto nativo após conversão.
+- **Feedback durante conversão com OCR**: barra de progresso indica "(com OCR seletivo)" quando OCR está habilitado. Aviso automático se OCR habilitado mas nenhum PDF selecionado.
+- **`tesseract_available()`** (`core/extractors.py`): nova função utilitária para verificação programática da disponibilidade do Tesseract.
+
+### Alterações internas
+
+- `extract_text()` e `_extract_pdf()` aceitam novo parâmetro `stats: dict | None` para rastrear métricas de OCR (total_pages, ocr_pages) durante extração.
+- `convert_document()` em `pipeline.py` passa `result.stats` para `extract_text()`, permitindo coleta de estatísticas OCR sem alterar a interface de retorno.
+- CSS customizado na UI com classes `.ocr-available` e `.ocr-unavailable` para indicadores visuais de status.
+
+
 ## v7.1 (2026-04-05)
 
 ### Novos recursos
