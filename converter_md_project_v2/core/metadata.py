@@ -13,6 +13,7 @@ def _strip_md_formatting(value: str) -> str:
     cleaned = re.sub(r'\*{2,3}', '', value)
     return cleaned.strip()
 
+
 def generate_frontmatter(
     text: str,
     filename: str = "",
