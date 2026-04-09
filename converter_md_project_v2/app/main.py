@@ -4,6 +4,7 @@ Interface Streamlit para conversão de documentos jurídicos para Markdown.
 
 import io
 import logging
+import shutil
 import sys
 import zipfile
 from pathlib import Path
@@ -21,10 +22,54 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
 
+
+# ============================================================
+# Detecção de Tesseract no sistema
+# ============================================================
+@st.cache_resource
+def _check_tesseract():
+    """Verifica se o Tesseract OCR está instalado e disponível."""
+    info = {"available": False, "version": "", "languages": [], "path": ""}
+    tess_path = shutil.which("tesseract")
+    if not tess_path:
+        return info
+    info["path"] = tess_path
+    info["available"] = True
+    try:
+        import subprocess
+
+        result = subprocess.run(
+            [tess_path, "--version"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        version_line = (result.stdout or result.stderr).strip().split("\n")[0]
+        info["version"] = version_line
+    except Exception:
+        info["version"] = "desconhecida"
+    try:
+        import subprocess
+
+        result = subprocess.run(
+            [tess_path, "--list-langs"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        langs_raw = (result.stdout or result.stderr).strip().split("\n")
+        info["languages"] = [l.strip() for l in langs_raw[1:] if l.strip()]
+    except Exception:
+        pass
+    return info
+
+
+TESSERACT_INFO = _check_tesseract()
+
+
 # ============================================================
 # Configuração da página
 # ============================================================
-
 st.set_page_config(
     page_title="Conversor Jurídico → Markdown",
     page_icon="⚖️",
@@ -34,7 +79,6 @@ st.set_page_config(
 # ============================================================
 # CSS customizado
 # ============================================================
-
 st.markdown("""
 <style>
     .stMarkdown pre {
@@ -66,20 +110,32 @@ st.markdown("""
         border-radius: 4px;
         font-size: 13px;
     }
+    .ocr-status {
+        padding: 8px 12px;
+        border-radius: 4px;
+        font-size: 13px;
+        margin: 4px 0;
+    }
+    .ocr-available {
+        background-color: #d4edda;
+        border-left: 3px solid #28a745;
+    }
+    .ocr-unavailable {
+        background-color: #fff3cd;
+        border-left: 3px solid #ffc107;
+    }
 </style>
 """, unsafe_allow_html=True)
 
 # ============================================================
 # Interface principal
 # ============================================================
-
 st.title("⚖️ Conversor de Documentos Jurídicos → Markdown")
 st.caption("Converta PDFs, DOCX, TXT e Markdown para Markdown limpo e estruturado.")
 
 # ============================================================
 # Sidebar — Configurações
 # ============================================================
-
 with st.sidebar:
     st.header("Configurações")
 
@@ -164,21 +220,57 @@ with st.sidebar:
              "callouts para definições, resumos por seção e notas de rodapé.",
     )
 
-    # ── OCR ──
+    # ── OCR Seletivo ──
     st.divider()
-    st.subheader("OCR")
+    st.subheader("OCR Seletivo")
+
+    # Status do Tesseract
+    if TESSERACT_INFO["available"]:
+        _tess_langs_str = ", ".join(TESSERACT_INFO["languages"][:6]) or "N/A"
+        _tess_more = "..." if len(TESSERACT_INFO["languages"]) > 6 else ""
+        st.markdown(
+            '<div class="ocr-status ocr-available">'
+            "✅ <strong>Tesseract disponível</strong><br>"
+            f'<small>Versão: {TESSERACT_INFO["version"]}</small><br>'
+            f"<small>Idiomas: {_tess_langs_str}{_tess_more}</small>"
+            "</div>",
+            unsafe_allow_html=True,
+        )
+    else:
+        st.markdown(
+            '<div class="ocr-status ocr-unavailable">'
+            "⚠️ <strong>Tesseract não encontrado</strong><br>"
+            "<small>OCR não disponível neste ambiente. "
+            "Instale tesseract-ocr no sistema.</small>"
+            "</div>",
+            unsafe_allow_html=True,
+        )
 
     ocr_enabled = st.checkbox(
         "Habilitar OCR seletivo",
         value=False,
+        disabled=not TESSERACT_INFO["available"],
         help="Aplica OCR apenas em páginas com pouco texto nativo. "
-             "Requer pytesseract e Tesseract instalados no sistema.",
+             "Requer pytesseract e Tesseract instalados no sistema."
+             + ("" if TESSERACT_INFO["available"]
+                else " ⚠️ Tesseract não detectado neste ambiente."),
     )
+
+    # Filtrar idiomas disponíveis com base nos instalados
+    _all_ocr_langs = ["auto", "por", "eng", "spa", "fra", "deu", "ita"]
+    if TESSERACT_INFO["available"] and TESSERACT_INFO["languages"]:
+        _tess_langs = set(TESSERACT_INFO["languages"])
+        _available_langs = ["auto"] + [
+            lang for lang in _all_ocr_langs[1:]
+            if lang in _tess_langs
+        ]
+    else:
+        _available_langs = _all_ocr_langs
 
     ocr_lang = st.selectbox(
         "Idioma do OCR",
-        options=["auto", "por", "eng", "spa", "fra", "deu", "ita"],
-        index=1,
+        options=_available_langs,
+        index=min(1, len(_available_langs) - 1),
         disabled=not ocr_enabled,
         help="auto: detecta automaticamente. "
              "por (português), eng (inglês), spa (espanhol), etc.",
@@ -261,7 +353,6 @@ with st.sidebar:
 # ============================================================
 # Upload de arquivos
 # ============================================================
-
 uploaded_files = st.file_uploader(
     "Selecione os documentos",
     type=["pdf", "docx", "txt", "md"],
@@ -271,6 +362,11 @@ uploaded_files = st.file_uploader(
 
 if uploaded_files:
     st.info(f"📄 {len(uploaded_files)} arquivo(s) selecionado(s)")
+
+    # Aviso se OCR habilitado mas sem PDFs
+    has_pdfs = any(f.name.lower().endswith(".pdf") for f in uploaded_files)
+    if ocr_enabled and not has_pdfs:
+        st.warning("⚠️ OCR seletivo só se aplica a arquivos PDF.")
 
     if st.button("🚀 Converter", type="primary", use_container_width=True):
         results = []
@@ -283,6 +379,8 @@ if uploaded_files:
 
         for i, uploaded_file in enumerate(uploaded_files):
             progress_text = f"Processando {i + 1}/{len(uploaded_files)}: {uploaded_file.name}"
+            if ocr_enabled and uploaded_file.name.lower().endswith(".pdf"):
+                progress_text += " (com OCR seletivo)"
             progress_bar.progress((i) / len(uploaded_files), text=progress_text)
 
             file_bytes = uploaded_file.read()
@@ -319,7 +417,6 @@ if uploaded_files:
         # ============================================================
         # Exibir resultados
         # ============================================================
-
         st.divider()
         st.header("Resultados")
 
@@ -340,14 +437,47 @@ if uploaded_files:
                     # Estatísticas
                     if result.stats:
                         stats_cols = st.columns(4)
-                        stats_cols[0].metric("Chars bruto", f"{result.stats.get('chars_raw', 0):,}")
-                        stats_cols[1].metric("Chars limpo", f"{result.stats.get('chars_cleaned', 0):,}")
-                        stats_cols[2].metric("Chars final", f"{result.stats.get('chars_final', 0):,}")
+                        stats_cols[0].metric(
+                            "Chars bruto",
+                            f"{result.stats.get('chars_raw', 0):,}",
+                        )
+                        stats_cols[1].metric(
+                            "Chars limpo",
+                            f"{result.stats.get('chars_cleaned', 0):,}",
+                        )
+                        stats_cols[2].metric(
+                            "Chars final",
+                            f"{result.stats.get('chars_final', 0):,}",
+                        )
                         if "pieces_count" in result.stats:
-                            stats_cols[3].metric("Peças", result.stats["pieces_count"])
+                            stats_cols[3].metric(
+                                "Peças", result.stats["pieces_count"]
+                            )
+
+                    # Info OCR se habilitado
+                    if (
+                        ocr_enabled
+                        and result.filename.lower().endswith(".pdf")
+                    ):
+                        ocr_pages = result.stats.get("ocr_pages", 0)
+                        total_pages = result.stats.get("total_pages", "?")
+                        if ocr_pages > 0:
+                            st.info(
+                                f"🔍 OCR aplicado em **{ocr_pages}** de "
+                                f"**{total_pages}** páginas "
+                                f"(threshold: {ocr_threshold} chars)"
+                            )
+                        elif total_pages != "?":
+                            st.success(
+                                f"📄 Todas as {total_pages} páginas "
+                                "tinham texto nativo suficiente — "
+                                "OCR não necessário."
+                            )
 
                     # Tabs para preview e download
-                    tab_preview, tab_raw = st.tabs(["📖 Preview", "📝 Código Markdown"])
+                    tab_preview, tab_raw = st.tabs(
+                        ["📖 Preview", "📝 Código Markdown"]
+                    )
 
                     with tab_preview:
                         st.markdown(result.markdown)
@@ -372,6 +502,7 @@ if uploaded_files:
                         dl_name = stem + ".md"
                         dl_data = result.markdown.encode("utf-8")
                         dl_mime = "text/markdown"
+
                     st.download_button(
                         label=f"⬇️ Baixar {dl_name}",
                         data=dl_data,
@@ -383,7 +514,11 @@ if uploaded_files:
                     if result.pieces and len(result.pieces) > 1:
                         st.subheader("Peças separadas")
                         for j, piece in enumerate(result.pieces):
-                            piece_filename = f"{Path(result.filename).stem}_peca_{j + 1}_{piece['title'][:30]}.md"
+                            piece_filename = (
+                                f"{Path(result.filename).stem}"
+                                f"_peca_{j + 1}"
+                                f"_{piece['title'][:30]}.md"
+                            )
                             st.download_button(
                                 label=f"⬇️ {piece['title'][:50]}",
                                 data=piece["content"].encode("utf-8"),
@@ -393,14 +528,14 @@ if uploaded_files:
                             )
                 else:
                     st.markdown(
-                        f'<div class="error-box">❌ Erro: {result.error}</div>',
+                        f'<div class="error-box">'
+                        f"❌ Erro: {result.error}</div>",
                         unsafe_allow_html=True,
                     )
 
         # ============================================================
         # Download em lote (ZIP)
         # ============================================================
-
         successful_results = [r for r in results if r.success]
         if len(successful_results) > 1:
             st.divider()
@@ -422,7 +557,6 @@ if uploaded_files:
                 mime="application/zip",
                 use_container_width=True,
             )
-
 else:
     st.markdown(
         """
