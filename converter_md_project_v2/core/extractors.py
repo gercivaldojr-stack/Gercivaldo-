@@ -682,6 +682,8 @@ def _extract_pdf(
         if ocr_count > 0:
             logger.info("OCR aplicado em %d de %d páginas",
                         ocr_count, len(pages_to_process))
+            if stats is not None:
+                stats["ocr_pages"] = ocr_count
         if chunks_processed > 1:
             logger.info("Processamento concluído em %d chunks de %d páginas",
                         chunks_processed, chunk_size)
