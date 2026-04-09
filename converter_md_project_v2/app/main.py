@@ -308,8 +308,9 @@ if uploaded_files:
                 detect_columns=detect_columns_opt and is_pdf,
                 output_format=output_format_key,
                 max_workers=workers_val,
-                rag_optimize=rag_optimize,
                 ocr_cache_enabled=ocr_cache_enabled and is_pdf,
+                ocr_cache_dir=None,
+                rag_optimize=rag_optimize,
             )
             results.append(result)
 
