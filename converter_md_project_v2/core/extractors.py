@@ -29,6 +29,12 @@ _FOOTER_PATTERNS = [
 ]
 
 
+def tesseract_available() -> bool:
+    """Verifica se o Tesseract OCR está instalado no sistema."""
+    import shutil
+    return shutil.which("tesseract") is not None
+
+
 def extract_text(
     file_path: str = None,
     file_bytes: bytes | None = None,
@@ -612,6 +618,8 @@ def _extract_pdf(
                         "OCR aplicado em %d páginas (paralelo)",
                         par_ocr,
                     )
+                    if stats is not None:
+                        stats["ocr_pages"] = par_ocr
                 return "\n".join(par_result)
 
         # ── Processamento sequencial em chunks ──
