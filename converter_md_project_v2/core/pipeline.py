@@ -178,6 +178,7 @@ def convert_document(
             max_workers=max_workers,
             ocr_cache_enabled=ocr_cache_enabled,
             ocr_cache_dir=ocr_cache_dir,
+            stats=result.stats,
         )
 
         if not raw_text.strip():
