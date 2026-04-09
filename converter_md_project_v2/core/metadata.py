@@ -8,6 +8,11 @@ import re
 from datetime import datetime
 
 
+def _strip_md_formatting(value: str) -> str:
+    """Remove marcadores Markdown (**, ***, *) de valores de metadados."""
+    cleaned = re.sub(r'\*{2,3}', '', value)
+    return cleaned.strip()
+
 def generate_frontmatter(
     text: str,
     filename: str = "",
@@ -111,7 +116,7 @@ def generate_frontmatter(
     # Monta YAML
     lines = ["---"]
     for key, value in meta.items():
-        safe_value = str(value).replace('"', '\\"')
+        safe_value = _strip_md_formatting(str(value)).replace('"', '\\"')
         lines.append(f'{key}: "{safe_value}"')
     lines.append("---")
     return "\n".join(lines)
@@ -194,14 +199,29 @@ def extract_procedural_metadata(text: str, meta: dict) -> None:
     search_area = text[:5000]
 
     # Autor com CPF opcional
+    # Padrão 1: "Autor: NOME" / "Requerente: NOME" (com label explícito)
     autor_match = re.search(
-        r"(?:Autor|Requerente|Exequente|Impetrante)[:\s]+([A-ZÀ-Ú][A-ZÀ-Ú\s]+)"
-        r"(?:,?\s*(?:inscrit[oa]\s+no\s+CPF|CPF)\s*(?:n[º°.]?\s*)?(\d{3}[.\s]?\d{3}[.\s]?\d{3}[-.\s]?\d{2}))?",
+        r"(?:Autor|Requerente|Exequente|Impetrante)[,:]\s+"
+        r"([A-ZÀ-Ú][A-ZÀ-Ú ]{3,})"
+        r"(?:,?\s*(?:inscrit[oa]\s+no\s+CPF|CPF)"
+        r"\s*(?:n[º°.]?\s*)?"
+        r"(\d{3}[.\s]?\d{3}[.\s]?\d{3}[-.\s]?\d{2}))?",
         search_area,
-        re.IGNORECASE,
     )
+    # Padrão 2: "**NOME EM MAIÚSCULAS**, brasileiro/nacionalidade"
+    # (petições que apresentam o nome no cabeçalho sem label)
+    if not autor_match:
+        autor_match = re.search(
+            r"\*{0,2}([A-ZÀ-Ú][A-ZÀ-Ú ]{5,})\*{0,2}"
+            r",\s*(?:brasileiro|brasileira|nacionalidade)"
+            r"(?:[^,]*inscrit[oa]\s+no\s+CPF[^\d]*(\d{3}"
+            r"[.\s]?\d{3}[.\s]?\d{3}[-.\s]?\d{2}))?",
+            search_area,
+        )
     if autor_match:
-        autor_name = autor_match.group(1).strip()[:120]
+        autor_name = _strip_md_formatting(
+            autor_match.group(1)
+        ).strip()[:120]
         cpf = autor_match.group(2)
         if cpf:
             meta["autor"] = f"{autor_name} (CPF: {cpf.strip()})"
@@ -226,7 +246,7 @@ def extract_procedural_metadata(text: str, meta: dict) -> None:
         re.IGNORECASE,
     )
     if comarca_match:
-        comarca_val = comarca_match.group(1).strip()
+        comarca_val = _strip_md_formatting(comarca_match.group(1)).strip()
         # Limpar slug-style text (palavras-com-hífen) que indicam lixo de heading
         comarca_val = re.split(r"[a-záéíóú]+-[a-záéíóú]+-", comarca_val)[0].strip()
         # Remover trailing pontuação ou caracteres indesejados
