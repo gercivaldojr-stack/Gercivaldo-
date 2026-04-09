@@ -58,7 +58,7 @@ def _check_tesseract():
             timeout=5,
         )
         langs_raw = (result.stdout or result.stderr).strip().split("\n")
-        info["languages"] = [l.strip() for l in langs_raw[1:] if l.strip()]
+        info["languages"] = [ln.strip() for ln in langs_raw[1:] if ln.strip()]
     except Exception:
         pass
     return info
