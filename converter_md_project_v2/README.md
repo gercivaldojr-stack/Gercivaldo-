@@ -175,7 +175,7 @@ O volume `./output` persiste arquivos convertidos entre reinicializacoes.
 3. Aponte para o repositorio e selecione `converter_md_project_v2/app/main.py`
 4. Deploy
 
-Nota: OCR nao funciona no Streamlit Cloud (sem Tesseract no sistema).
+Nota: OCR seletivo funciona no Streamlit Cloud via `packages.txt` (Tesseract instalado automaticamente). A interface detecta a disponibilidade do Tesseract e exibe o status na sidebar.
 
 ## Testes
 
@@ -269,7 +269,7 @@ Documento (PDF/DOCX/TXT)
 
 ### Limites conhecidos
 
-- **OCR**: depende do Tesseract instalado no sistema. Qualidade varia com resolucao do scan.
+- **OCR**: depende do Tesseract instalado no sistema (instalado automaticamente via `packages.txt` no Streamlit Cloud). Qualidade varia com resolucao do scan.
 - **Tabelas complexas**: tabelas com celulas mescladas podem perder estrutura.
 - **PDFs com layout nao-linear**: documentos com colunas multiplas podem ter ordem de leitura incorreta.
 - **Codificacao**: alguns PDFs antigos usam encodings nao-padrao que podem gerar glyphs corrompidos.
