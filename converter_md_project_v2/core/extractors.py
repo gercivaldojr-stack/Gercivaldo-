@@ -49,6 +49,7 @@ def extract_text(
     max_workers: int | None = None,
     ocr_cache_enabled: bool = False,
     ocr_cache_dir: str | None = None,
+    stats: dict | None = None,
 ) -> str:
     """Extrai texto de um arquivo com base na extensão.
 
@@ -99,6 +100,7 @@ def extract_text(
                 max_workers=max_workers,
                 ocr_cache_enabled=ocr_cache_enabled,
                 ocr_cache_dir=ocr_cache_dir,
+                stats=stats,
             )
 
         if file_bytes is not None:
@@ -519,6 +521,7 @@ def _extract_pdf(
     max_workers: int | None = None,
     ocr_cache_enabled: bool = False,
     ocr_cache_dir: str | None = None,
+    stats: dict | None = None,
     **kwargs,
 ) -> str:
     """Extrai texto de PDF usando PyMuPDF (fitz).
@@ -560,6 +563,11 @@ def _extract_pdf(
                         len(pages_to_process), total_pages, page_range)
         else:
             pages_to_process = list(range(total_pages))
+
+        # Registrar stats de páginas
+        if stats is not None:
+            stats["total_pages"] = len(pages_to_process)
+            stats["ocr_pages"] = 0
 
         if not pages_to_process:
             logger.warning("Nenhuma página a processar (range fora do limite?)")
