@@ -86,6 +86,9 @@ Exemplos:
                       help="Detectar layout de 2 colunas em PDFs (padrao: ativo).")
     feat.add_argument("--no-columns", action="store_true",
                       help="Desabilitar deteccao de colunas.")
+    feat.add_argument("--rag", action="store_true",
+                      help="Otimizar para base de conhecimento RAG "
+                           "(tags, area, callouts, latim, resumos).")
     feat.add_argument("--format", choices=["md", "html", "docx"], default=None,
                       dest="output_format",
                       help="Formato de saida: md (padrao), html ou docx.")
@@ -178,6 +181,7 @@ def _convert_single(input_path: Path, output_path: Path, cfg: dict) -> bool:
         max_workers=cfg.get("max_workers"),
         ocr_cache_enabled=cfg.get("ocr_cache", False),
         ocr_cache_dir=cfg.get("ocr_cache_dir"),
+        rag_optimize=cfg.get("rag", False),
     )
     elapsed = time.monotonic() - start
 

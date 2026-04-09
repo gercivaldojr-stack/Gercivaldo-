@@ -130,6 +130,7 @@ def convert_document(
     max_workers: int | None = None,
     ocr_cache_enabled: bool = False,
     ocr_cache_dir: str | None = None,
+    rag_optimize: bool = False,
 ) -> ConversionResult:
     """Converte um documento jurídico para Markdown estruturado.
 
@@ -201,6 +202,14 @@ def convert_document(
 
         # 3a. Remover frontmatter/sumário/TOC residual do arquivo original
         structured = _strip_existing_frontmatter(structured)
+
+        # 3a-RAG. Otimização semântica para bases RAG (opt-in)
+        if rag_optimize:
+            from .rag_optimizer import optimize_for_rag
+            structured = optimize_for_rag(
+                structured, filename=result.filename,
+            )
+            logger.info("Otimização RAG aplicada")
 
         # 3b. Frontmatter YAML (com metadados expandidos P8 + processuais M1)
         frontmatter = generate_frontmatter(
@@ -288,6 +297,7 @@ def convert_batch(
     detect_columns: bool = True,
     output_format: str = "md",
     max_workers: int | None = None,
+    rag_optimize: bool = False,
 ) -> list[ConversionResult]:
     """Converte múltiplos documentos em lote.
 
@@ -321,6 +331,7 @@ def convert_batch(
             chunk_size=chunk_size,
             detect_columns=detect_columns,
             output_format=output_format,
+            rag_optimize=rag_optimize,
         )
 
     results = []
@@ -349,6 +360,7 @@ def convert_batch(
             detect_columns=detect_columns,
             output_format=output_format,
             max_workers=max_workers,
+            rag_optimize=rag_optimize,
         )
         results.append(result)
 

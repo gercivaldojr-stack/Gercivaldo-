@@ -152,6 +152,18 @@ with st.sidebar:
         help="Gera sumário (TOC) automático com links para cada heading.",
     )
 
+    # ── RAG ──
+    st.divider()
+    st.subheader("Otimização RAG")
+
+    rag_optimize = st.checkbox(
+        "Otimizar para base de conhecimento RAG",
+        value=False,
+        help="Enriquece o Markdown com área/subárea jurídica, tags, "
+             "formatação semântica (latim em itálico, conceitos em negrito), "
+             "callouts para definições, resumos por seção e notas de rodapé.",
+    )
+
     # ── OCR ──
     st.divider()
     st.subheader("OCR")
@@ -296,6 +308,7 @@ if uploaded_files:
                 detect_columns=detect_columns_opt and is_pdf,
                 output_format=output_format_key,
                 max_workers=workers_val,
+                rag_optimize=rag_optimize,
                 ocr_cache_enabled=ocr_cache_enabled and is_pdf,
             )
             results.append(result)
