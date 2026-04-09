@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from .cleaning import clean_text
 from .extractors import extract_text
 from .legal_heuristics import apply_legal_heuristics, generate_toc
-from .metadata import extract_procedural_metadata, generate_frontmatter
+from .metadata import extract_procedural_metadata, generate_frontmatter, _strip_md_formatting
 from .piece_separator import format_separated_pieces, separate_pieces
 
 logger = logging.getLogger(__name__)
@@ -224,7 +224,7 @@ def convert_document(
             if proc_meta:
                 extra_lines = []
                 for key, value in proc_meta.items():
-                    safe_value = str(value).replace('"', '\\"')
+                    safe_value = _strip_md_formatting(str(value)).replace('"', '\\"')
                     extra_lines.append(f'{key}: "{safe_value}"')
                 # Insert before closing ---
                 fm_lines = frontmatter.split("\n")
