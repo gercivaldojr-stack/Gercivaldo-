@@ -255,6 +255,10 @@ def convert_document(
         else:
             result.markdown = structured
 
+        # 4b. Limpeza final de artefatos (metadados espúrios, headers/footers)
+        from .artifact_cleaner import clean_artifacts
+        result.markdown = clean_artifacts(result.markdown)
+
         result.stats["chars_final"] = len(result.markdown)
         result.stats["lines_final"] = result.markdown.count("\n")
 
