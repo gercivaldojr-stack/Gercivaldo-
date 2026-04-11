@@ -490,7 +490,9 @@ def optimize_for_rag(text: str, filename: str = "") -> str:
     tags = extract_tags(text)
 
     text = apply_semantic_formatting(text)
-    text = insert_callouts(text)
+    # Defeito 2: classificação semântica em vez de insert_callouts indiscriminado
+    from .callout_classifier import apply_smart_callouts
+    text = apply_smart_callouts(text)
     text = generate_section_summaries(text)
     text = normalize_footnotes(text)
 
