@@ -267,6 +267,10 @@ def convert_document(
         from .artifact_cleaner import clean_artifacts
         result.markdown = clean_artifacts(result.markdown)
 
+        # 4c. Reconciliação de footnotes órfãs (defect-3)
+        from .footnote_relocator import relocate_orphan_footnotes
+        result.markdown = relocate_orphan_footnotes(result.markdown)
+
         result.stats["chars_final"] = len(result.markdown)
         result.stats["lines_final"] = result.markdown.count("\n")
 
