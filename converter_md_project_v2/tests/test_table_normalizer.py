@@ -3,7 +3,9 @@
 from core.table_normalizer import (
     _convert_single_column_to_paragraph,
     _dedupe_columns,
+    _is_visual_schema,
     _remove_empty_columns,
+    _schema_to_list,
     normalize_tables,
 )
 
@@ -62,6 +64,43 @@ class TestSingleColumnConversion:
         rows = [["A", "B"], ["X", "Y"]]
         result = _convert_single_column_to_paragraph(rows)
         assert result is None
+
+
+class TestVisualSchema:
+    def test_detects_flow_chars(self):
+        rows = [
+            ["A", "→", "B"],
+            ["C", "→", "D"],
+            ["E", "→", "F"],
+        ]
+        assert _is_visual_schema(rows)
+
+    def test_no_flow_chars(self):
+        rows = [["Item 1", "Desc 1"], ["Item 2", "Desc 2"]]
+        assert not _is_visual_schema(rows)
+
+    def test_empty_rows(self):
+        assert not _is_visual_schema([])
+
+    def test_schema_to_list(self):
+        rows = [
+            ["Plano", "Existência"],
+            ["Plano", "Validade"],
+        ]
+        result = _schema_to_list(rows)
+        assert "- Plano" in result
+        assert "  - Existência" in result
+        assert "  - Validade" in result
+
+    def test_normalize_visual_schema(self):
+        text = (
+            "| Causa | → | Efeito |\n"
+            "| Ação | → | Reação |\n"
+            "| Norma | → | Sanção |"
+        )
+        result = normalize_tables(text)
+        # Esquema visual deve virar lista, não permanecer como tabela
+        assert "- " in result
 
 
 class TestNormalizeTables:

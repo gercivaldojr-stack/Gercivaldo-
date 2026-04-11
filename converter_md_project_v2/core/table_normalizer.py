@@ -17,6 +17,9 @@ logger = logging.getLogger(__name__)
 _TABLE_LINE_RE = re.compile(r'^\s*\|.*\|\s*$')
 _TABLE_SEP_RE = re.compile(r'^\s*\|?\s*[-:|\s]+\s*\|?\s*$')
 
+# Caracteres indicativos de fluxograma/esquema visual
+_FLOW_CHARS = ('→', '←', '↓', '↑', '⇒', '⇐', '↔', '➡', '⬇', '⬆')
+
 
 def _split_row(row: str) -> list[str]:
     """Divide uma linha de tabela markdown em células."""
@@ -100,6 +103,55 @@ def _remove_empty_columns(rows: list[list[str]]) -> tuple[list[list[str]], int]:
     return new_rows, removed
 
 
+def _is_visual_schema(rows: list[list[str]]) -> bool:
+    """Detecta se a 'tabela' é na verdade um esquema visual/fluxograma.
+
+    Heurísticas:
+    - Contém setas/conectores (→, ←, ↓, etc.) em > 30% das células
+    - Múltiplas células contêm o mesmo tipo de conteúdo hierárquico
+      (ex: cada linha é um nível de uma classificação)
+    """
+    if not rows:
+        return False
+
+    total_cells = 0
+    flow_cells = 0
+    for r in rows:
+        for c in r:
+            if not c.strip():
+                continue
+            total_cells += 1
+            if any(ch in c for ch in _FLOW_CHARS):
+                flow_cells += 1
+
+    if total_cells == 0:
+        return False
+
+    ratio = flow_cells / total_cells
+    return ratio > 0.3
+
+
+def _schema_to_list(rows: list[list[str]]) -> str:
+    """Converte esquema visual para lista Markdown indentada.
+
+    Cada linha vira um item; cada coluna não-vazia adicional vira sub-item.
+    """
+    items = []
+    for r in rows:
+        cells = [c.strip() for c in r if c.strip()]
+        if not cells:
+            continue
+        # Filtrar cells de separador
+        if all(re.match(r'^[-:]+$', c) for c in cells):
+            continue
+        if not cells:
+            continue
+        items.append("- " + cells[0])
+        for sub in cells[1:]:
+            items.append("  - " + sub)
+    return "\n".join(items)
+
+
 def _convert_single_column_to_paragraph(rows: list[list[str]]) -> str | None:
     """Se a tabela tem apenas 1 coluna, converte para texto/blockquote.
 
@@ -156,6 +208,11 @@ def _process_table(table_lines: list[str]) -> list[str]:
             "table_normalizer: %d colunas duplicadas e %d vazias removidas",
             dup_removed, empty_removed,
         )
+
+    # Detectar esquema visual (fluxograma com setas) e converter para lista
+    if _is_visual_schema(all_rows):
+        logger.info("table_normalizer: esquema visual convertido para lista")
+        return [_schema_to_list(all_rows)]
 
     # Tentar converter tabela de 1 coluna para parágrafo
     single = _convert_single_column_to_paragraph(all_rows)
