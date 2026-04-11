@@ -30,7 +30,9 @@ class TestConvertDocument:
         )
         assert result.success
         assert "# CAPÍTULO I" in result.markdown
-        assert "### 1.1" in result.markdown
+        # heading_validator promove ### 1.1 para ## 1.1 pois saltar
+        # de # para ### é inválido (defect-6 fix)
+        assert "## 1.1" in result.markdown
 
     def test_empty_document(self):
         result = convert_document(

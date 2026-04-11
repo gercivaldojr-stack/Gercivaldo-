@@ -204,6 +204,10 @@ def convert_document(
         # 3a. Remover frontmatter/sumário/TOC residual do arquivo original
         structured = _strip_existing_frontmatter(structured)
 
+        # 3a-HEAD. Validação e normalização de hierarquia de headings
+        from .heading_validator import normalize_heading_hierarchy
+        structured = normalize_heading_hierarchy(structured)
+
         # 3a-RAG. Otimização semântica para bases RAG (opt-in)
         if rag_optimize:
             from .rag_optimizer import optimize_for_rag
