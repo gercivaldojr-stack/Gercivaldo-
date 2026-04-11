@@ -2,6 +2,7 @@
 
 from core.artifact_cleaner import (
     clean_artifacts,
+    remove_layout_artifacts,
     remove_spurious_metadata,
 )
 
@@ -41,6 +42,55 @@ class TestRemoveSpuriousMetadata:
         text = "O resumo do contrato é claro. Palavras importantes."
         count, _ = remove_spurious_metadata(text)
         assert count == 0
+
+
+class TestRemoveLayoutArtifacts:
+    def test_removes_cs_civil_pattern(self):
+        text = (
+            "Texto antes.\n"
+            "CS – CIVIL I 2025.2 | 42\n"
+            "Texto depois."
+        )
+        count, result = remove_layout_artifacts(text)
+        assert count == 1
+        assert "CS – CIVIL I" not in result
+        assert "Texto antes" in result
+        assert "Texto depois" in result
+
+    def test_removes_pipe_wrapped_header(self):
+        text = (
+            "Conteúdo válido.\n"
+            "| CS – CIVIL I 2025.2 | 7 |\n"
+            "Mais conteúdo."
+        )
+        count, result = remove_layout_artifacts(text)
+        assert count >= 1
+        assert "Conteúdo válido" in result
+
+    def test_removes_pagina_label(self):
+        text = "Linha A.\nPágina 42\nLinha B."
+        count, result = remove_layout_artifacts(text)
+        assert count == 1
+        assert "Página 42" not in result
+
+    def test_removes_isolated_page_number(self):
+        text = "Parágrafo final.\n\n42\n\nNovo parágrafo."
+        count, result = remove_layout_artifacts(text)
+        assert count == 1
+        assert "Parágrafo final" in result
+        assert "Novo parágrafo" in result
+
+    def test_keeps_inline_numbers(self):
+        text = "O Art. 42 do CC dispõe sobre o tema."
+        count, result = remove_layout_artifacts(text)
+        assert count == 0
+        assert "42" in result
+
+    def test_removes_dash_page_number(self):
+        text = "Texto.\n— 15 —\nMais texto."
+        count, result = remove_layout_artifacts(text)
+        assert count == 1
+        assert "— 15 —" not in result
 
 
 class TestCleanArtifacts:
