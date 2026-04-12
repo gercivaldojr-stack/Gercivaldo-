@@ -408,7 +408,7 @@ if uploaded_files:
             file_bytes = uploaded_file.read()
             is_pdf = uploaded_file.name.lower().endswith(".pdf")
 
-            result = convert_document(
+            convert_kwargs = dict(
                 file_bytes=file_bytes,
                 filename=uploaded_file.name,
                 mode=mode,
@@ -416,7 +416,9 @@ if uploaded_files:
                 remove_headers_footers=remove_hf,
                 detect_citations=detect_citations and mode == "forense",
                 extract_metadata=extract_metadata,
-                extract_procedural=extract_procedural and mode == "forense",
+                extract_procedural=(
+                    extract_procedural and mode == "forense"
+                ),
                 separate_enums=separate_enums and mode == "forense",
                 wrap_notes=wrap_notes and mode == "forense",
                 generate_toc_flag=generate_toc_opt,
@@ -435,6 +437,15 @@ if uploaded_files:
                 strip_artifacts_flag=bool(strip_artifacts_opt),
                 strip_references_flag=bool(strip_references_opt),
             )
+
+            # Fallback: se pipeline.py não aceitar params novos (cache)
+            try:
+                result = convert_document(**convert_kwargs)
+            except TypeError:
+                for k in list(convert_kwargs):
+                    if k.startswith("strip_"):
+                        del convert_kwargs[k]
+                result = convert_document(**convert_kwargs)
             results.append(result)
 
         progress_bar.progress(1.0, text="Conversão concluída!")
