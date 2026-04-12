@@ -133,7 +133,11 @@ def ensure_heading_blank_lines(text: str) -> tuple[int, str]:
 _VERB_INDICATOR = re.compile(
     r'\b(?:é|são|foi|está|pode|deve|tem|há|não|será|'
     r'consiste|define|trata|configura|constitui|representa|'
-    r'caracteriza|compreende|abrange|inclui)\b',
+    r'caracteriza|compreende|abrange|inclui|'
+    r'prevê|dispõe|estabelece|determina|aplica|regula|'
+    r'disciplina|prescreve|estipula|assegura|garante|'
+    r'veda|proíbe|autoriza|permite|exige|obriga|'
+    r'impõe|reconhece|admite)\b',
     re.IGNORECASE,
 )
 
