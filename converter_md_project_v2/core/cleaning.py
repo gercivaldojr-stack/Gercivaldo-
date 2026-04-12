@@ -93,6 +93,7 @@ def clean_text(text: str, remove_headers_footers: bool = True) -> str:
     text = fix_word_spacing(text)
     text = separate_enumerations(text)
     text = normalize_legal_citations(text)
+    text = split_long_paragraphs(text)
     text = normalize_paragraphs(text)
 
     return text.strip()
@@ -478,6 +479,53 @@ def separate_enumerations(text: str) -> str:
                 result.append("")
         result.append(line)
     return "\n".join(result)
+
+
+def split_long_paragraphs(text: str, threshold: int = 500) -> str:
+    """Re-paragrafação de blocos monolíticos de texto.
+
+    Quando uma linha de texto excede `threshold` chars e contém
+    padrão '. [Maiúscula]' (fim de frase + início de outra),
+    insere quebra de parágrafo no ponto de separação.
+
+    Preserva headings, blockquotes, tabelas e listas.
+    """
+    _split_re = re.compile(
+        r'([.!?])\s+([A-ZÀ-Ú])',
+    )
+    lines = text.split('\n')
+    result = []
+    for line in lines:
+        stripped = line.strip()
+        if (
+            len(stripped) > threshold
+            and not stripped.startswith(('#', '>', '|', '- ', '* '))
+        ):
+            parts = _split_re.split(stripped)
+            if len(parts) > 3:
+                rebuilt = []
+                i = 0
+                current = ""
+                while i < len(parts):
+                    if i + 2 < len(parts) and parts[i + 1] in '.!?':
+                        current += parts[i] + parts[i + 1]
+                        if len(current) > threshold // 2:
+                            rebuilt.append(current.strip())
+                            current = parts[i + 2]
+                            i += 3
+                        else:
+                            current += " " + parts[i + 2]
+                            i += 3
+                    else:
+                        current += parts[i]
+                        i += 1
+                if current.strip():
+                    rebuilt.append(current.strip())
+                if len(rebuilt) > 1:
+                    result.append('\n\n'.join(rebuilt))
+                    continue
+        result.append(line)
+    return '\n'.join(result)
 
 
 def normalize_paragraphs(text: str) -> str:
