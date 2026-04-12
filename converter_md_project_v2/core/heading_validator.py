@@ -130,9 +130,74 @@ def ensure_heading_blank_lines(text: str) -> tuple[int, str]:
     return count, '\n'.join(result)
 
 
+_VERB_INDICATOR = re.compile(
+    r'\b(?:é|são|foi|está|pode|deve|tem|há|não|será|'
+    r'consiste|define|trata|configura|constitui|representa|'
+    r'caracteriza|compreende|abrange|inclui)\b',
+    re.IGNORECASE,
+)
+
+
+def truncate_heading_with_body(text: str, max_words: int = 15) -> str:
+    """Separa headings que contêm início de parágrafo embutido.
+
+    Se um heading tem mais de max_words palavras e contém
+    verbo conjugado após o "título" (indicando início de frase),
+    separa em heading + parágrafo.
+    """
+    lines = text.split('\n')
+    result = []
+    count = 0
+
+    for line in lines:
+        m = _HEADING_RE.match(line)
+        if not m:
+            result.append(line)
+            continue
+
+        level = m.group(1)
+        content = m.group(2)
+        words = content.split()
+
+        if len(words) <= max_words:
+            result.append(line)
+            continue
+
+        # Procurar ponto de corte: verbo conjugado após ~8 palavras
+        cut_point = -1
+        for wi in range(8, min(len(words), max_words + 5)):
+            word = words[wi]
+            if _VERB_INDICATOR.match(word):
+                # Verificar se a palavra anterior é um substantivo (capitalized)
+                if wi > 0 and words[wi - 1][0].isupper():
+                    cut_point = wi
+                    break
+                # Ou se a frase simplesmente começa com maiúscula
+                if word[0].isupper():
+                    cut_point = wi
+                    break
+
+        if cut_point > 0:
+            heading_text = ' '.join(words[:cut_point])
+            body_text = ' '.join(words[cut_point:])
+            result.append(f"{level} {heading_text}")
+            result.append("")
+            result.append(body_text)
+            count += 1
+        else:
+            result.append(line)
+
+    if count > 0:
+        logger.info(
+            "truncate_heading_with_body: %d headings truncados", count,
+        )
+    return '\n'.join(result)
+
+
 def normalize_heading_hierarchy(text: str) -> str:
     """Pipeline completo de normalização de headings."""
     _, text = remove_duplicate_numbering(text)
     _, text = fix_heading_level_jumps(text)
+    text = truncate_heading_with_body(text)
     _, text = ensure_heading_blank_lines(text)
     return text
