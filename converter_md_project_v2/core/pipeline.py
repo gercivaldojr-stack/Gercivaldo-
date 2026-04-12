@@ -4,6 +4,7 @@ Orquestra extração, limpeza, heurísticas e separação de peças.
 """
 
 import logging
+import re
 from dataclasses import dataclass, field
 
 from .cleaning import clean_text
@@ -24,7 +25,6 @@ def _strip_existing_frontmatter(text: str) -> str:
     - Blocos ## Sumário / ## Índice seguidos de listas - [...] até linha em branco
     - Blocos de TOC malformado: 3+ linhas consecutivas com "- [" sem "](#"
     """
-    import re
     lines = text.split("\n")
     result = []
     i = 0
@@ -272,15 +272,33 @@ def convert_document(
                 fm_lines = fm_lines[:-1] + extra_lines + [fm_lines[-1]]
                 frontmatter = "\n".join(fm_lines)
 
+        # D10-fix: inserir H1 se o doc não possui heading #
+        has_h1 = any(
+            ln.strip().startswith('# ')
+            and not ln.strip().startswith('## ')
+            for ln in structured.split('\n')
+        )
+        if not has_h1:
+            # Extrair título do frontmatter
+            titulo_m = re.search(r'titulo:\s*"(.+?)"', frontmatter)
+            if titulo_m:
+                h1_line = f"# {titulo_m.group(1)}\n\n"
+            else:
+                h1_line = ""
+        else:
+            h1_line = ""
+
         # 3c. Sumário automático (apenas se habilitado)
         if generate_toc_flag:
             toc = generate_toc(structured)
             if toc:
-                structured = frontmatter + "\n\n" + toc + "\n" + structured
+                structured = (
+                    frontmatter + "\n\n" + h1_line + toc + "\n" + structured
+                )
             else:
-                structured = frontmatter + "\n\n" + structured
+                structured = frontmatter + "\n\n" + h1_line + structured
         else:
-            structured = frontmatter + "\n\n" + structured
+            structured = frontmatter + "\n\n" + h1_line + structured
 
         # 4. Separação de peças (opcional)
         if separate:
