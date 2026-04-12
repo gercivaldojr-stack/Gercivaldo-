@@ -524,6 +524,9 @@ def separate_enumerations(text: str) -> str:
     return "\n".join(result)
 
 
+_SPLIT_LONG_PARA_RE = re.compile(r'([.!?])\s+([A-ZÀ-Ú])')
+
+
 def split_long_paragraphs(text: str, threshold: int = 500) -> str:
     """Re-paragrafação de blocos monolíticos de texto.
 
@@ -533,9 +536,6 @@ def split_long_paragraphs(text: str, threshold: int = 500) -> str:
 
     Preserva headings, blockquotes, tabelas e listas.
     """
-    _split_re = re.compile(
-        r'([.!?])\s+([A-ZÀ-Ú])',
-    )
     lines = text.split('\n')
     result = []
     for line in lines:
@@ -544,7 +544,7 @@ def split_long_paragraphs(text: str, threshold: int = 500) -> str:
             len(stripped) > threshold
             and not stripped.startswith(('#', '>', '|', '- ', '* '))
         ):
-            parts = _split_re.split(stripped)
+            parts = _SPLIT_LONG_PARA_RE.split(stripped)
             if len(parts) > 3:
                 rebuilt = []
                 i = 0
