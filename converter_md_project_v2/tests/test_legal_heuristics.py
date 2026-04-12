@@ -173,7 +173,8 @@ class TestDoutrinaMode:
     def test_deep_subsection(self):
         text = "1.1.2 Sub-item"
         result = apply_legal_heuristics(text, mode="doutrina")
-        assert result.startswith("### ")
+        # depth 3 (N.N.N) → #### (D9 fix: deep hierarchy)
+        assert result.startswith("#### ")
 
     def test_parte(self):
         text = "PARTE I - Direito Civil"

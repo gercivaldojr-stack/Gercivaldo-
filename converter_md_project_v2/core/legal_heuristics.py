@@ -710,9 +710,14 @@ def _apply_forense(line: str) -> str:
     if FORENSE_NUMBERED_H2_PATTERN.match(line.strip()):
         return f"## {line}"
 
-    # M5: Subseções numeradas \d+\.\d+ → H3 (somente linhas curtas)
-    if len(line) < 100 and FORENSE_NUMBERED_H3_PATTERN.match(line.strip()):
-        return f"### {line}"
+    # M5: Subseções numeradas com profundidade variável
+    if len(line) < 100:
+        m_sub = re.match(r'^(\d+(?:\.\d+)+)\.?\s+', line.strip())
+        if m_sub:
+            depth = m_sub.group(1).count('.') + 1
+            # depth 2 = N.N → ###, depth 3 = N.N.N → ####, etc.
+            level = min(depth + 1, 6)
+            return '#' * level + ' ' + line
 
     # H3: subseções Da/Do/Das/Dos (linhas curtas, < 100 chars)
     if len(line) < 100:
@@ -758,6 +763,14 @@ def _apply_doutrina(line: str) -> str:
                 if _DOUTRINA_BODY_VERBS.search(line):
                     return line
             return f"## {line}"
+
+    # Subseções com profundidade variável (N.N.N → ####, N.N.N.N → #####)
+    if len(line) < 100:
+        m_sub = re.match(r'^(\d+(?:\.\d+)+)\.?\s+', line.strip())
+        if m_sub:
+            depth = m_sub.group(1).count('.') + 1
+            level = min(depth + 1, 6)
+            return '#' * level + ' ' + line
 
     for pattern in DOUTRINA_H3_PATTERNS:
         if re.match(pattern, line):
