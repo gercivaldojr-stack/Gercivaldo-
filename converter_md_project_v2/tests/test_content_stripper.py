@@ -7,6 +7,43 @@ from core.content_stripper import (
 )
 
 
+class TestStripInlineFootnoteNumbers:
+    def test_removes_number_after_period(self):
+        result = strip_footnotes("dever juridico de outrem.1 E mais.")
+        assert "outrem. E" in result
+        assert "outrem.1" not in result
+
+    def test_removes_number_after_word(self):
+        result = strip_footnotes("Responsabilidade (Haftung3 conceito)")
+        assert "Haftung " in result or "Haftung)" in result
+        assert "Haftung3" not in result
+
+    def test_removes_number_end_of_line(self):
+        result = strip_footnotes("posse + tempo + animus domini8")
+        assert "domini" in result
+        assert "domini8" not in result
+
+    def test_preserves_art_numbers(self):
+        result = strip_footnotes("Conforme Art. 123 do CC.")
+        assert "Art. 123" in result
+
+    def test_preserves_lei_numbers(self):
+        result = strip_footnotes("A Lei 8.666 dispõe sobre licitações.")
+        assert "Lei 8.666" in result
+
+    def test_preserves_section_numbers(self):
+        result = strip_footnotes("### 3.1. Conceitos iniciais")
+        assert "### 3.1." in result
+
+    def test_preserves_year(self):
+        result = strip_footnotes("O CC de 2002 revogou o anterior.")
+        assert "2002" in result
+
+    def test_preserves_sumula(self):
+        result = strip_footnotes("Súmula 403 do STJ.")
+        assert "Súmula 403" in result
+
+
 class TestStripFootnotes:
     def test_removes_inline_refs(self):
         text = "Texto com nota[^1] e outra[^2]."
@@ -131,6 +168,44 @@ class TestStripReferenceBlocks:
         assert "AUTOR. Título" not in result
         assert "## Anexos" in result
         assert "Conteúdo dos anexos" in result
+
+    def test_removes_referencias_citadas(self):
+        text = (
+            "## Conclusão\n\nTexto.\n\n"
+            "#### Referências citadas\n\n"
+            "TARTUCE, Flávio. Manual. 2024.\n"
+        )
+        result = strip_reference_blocks(text)
+        assert "Referências citadas" not in result
+        assert "TARTUCE" not in result
+        assert "Conclusão" in result
+
+    def test_removes_fontes(self):
+        text = (
+            "## Conclusão\n\nTexto.\n\n"
+            "## Fontes\n\nAutor. Título. 2024.\n"
+        )
+        result = strip_reference_blocks(text)
+        assert "## Fontes" not in result
+
+    def test_removes_notas_de_referencia(self):
+        text = (
+            "## Conclusão\n\nTexto.\n\n"
+            "### Notas de Referência\n\nConteúdo.\n"
+        )
+        result = strip_reference_blocks(text)
+        assert "Notas de Referência" not in result
+
+    def test_removes_biblio_block_without_heading(self):
+        text = (
+            "## Conclusão\n\nTexto final.\n\n"
+            "GONÇALVES, Carlos Roberto. Direito Civil. 2023.\n"
+            "TARTUCE, Flávio. Manual de Direito Civil. 2024.\n"
+            "DINIZ, Maria Helena. Curso de Direito Civil. 2022.\n"
+        )
+        result = strip_reference_blocks(text)
+        assert "GONÇALVES" not in result
+        assert "Texto final" in result
 
     def test_keeps_text_without_refs(self):
         text = "## Capítulo\n\nProsa sem referências."
