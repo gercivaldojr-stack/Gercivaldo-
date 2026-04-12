@@ -220,20 +220,21 @@ def _process_table(table_lines: list[str]) -> list[str]:
         logger.info("table_normalizer: tabela 1-coluna convertida para texto")
         return [single]
 
-    # Reconstruir markdown da tabela
+    # Reconstruir markdown da tabela com alinhamento garantido
     if not all_rows or not all_rows[0]:
         return table_lines
 
-    n_cols = len(all_rows[0])
-    result = [_join_row(all_rows[0])]
+    # D7-fix: garantir mesmo número de colunas em todas as linhas
+    n_cols = max(len(r) for r in all_rows)
+    all_rows = [r + [''] * (n_cols - len(r)) for r in all_rows]
+
+    result = [_join_row(all_rows[0][:n_cols])]
     if header:
         result.append(_join_row(['---'] * n_cols))
         for row in all_rows[1:]:
-            row = row + [''] * (n_cols - len(row))
             result.append(_join_row(row[:n_cols]))
     else:
         for row in all_rows[1:]:
-            row = row + [''] * (n_cols - len(row))
             result.append(_join_row(row[:n_cols]))
 
     return result
