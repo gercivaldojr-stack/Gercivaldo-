@@ -208,6 +208,28 @@ with st.sidebar:
         help="Gera sumário (TOC) automático com links para cada heading.",
     )
 
+    # ── Limpeza de conteúdo ──
+    st.divider()
+    st.subheader("Limpeza de conteúdo")
+
+    strip_footnotes_opt = st.checkbox(
+        "Remover notas de rodapé",
+        value=True,
+        help="Remove todas as notas de rodapé ([^N] e definições).",
+    )
+    strip_artifacts_opt = st.checkbox(
+        "Remover artefatos de conversão",
+        value=True,
+        help="Remove números de página, cabeçalhos repetitivos, "
+             "blocos Resumo/Palavras-chave.",
+    )
+    strip_references_opt = st.checkbox(
+        "Remover blocos de referências bibliográficas",
+        value=True,
+        help="Remove seções 'Referências', 'Bibliografia', "
+             "'Obras Consultadas'.",
+    )
+
     # ── RAG ──
     st.divider()
     st.subheader("Otimização RAG")
@@ -409,6 +431,9 @@ if uploaded_files:
                 ocr_cache_enabled=ocr_cache_enabled and is_pdf,
                 ocr_cache_dir=None,
                 rag_optimize=rag_optimize,
+                strip_footnotes_flag=strip_footnotes_opt,
+                strip_artifacts_flag=strip_artifacts_opt,
+                strip_references_flag=strip_references_opt,
             )
             results.append(result)
 

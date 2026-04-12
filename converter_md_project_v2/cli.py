@@ -93,6 +93,21 @@ Exemplos:
                       dest="output_format",
                       help="Formato de saida: md (padrao), html ou docx.")
 
+    # Stripping (ligados por padrão, --no-X para desativar)
+    strip = parser.add_argument_group("limpeza de conteudo (ligadas por padrao)")
+    strip.add_argument(
+        "--no-strip-footnotes", action="store_true",
+        help="Manter notas de rodape na saida.",
+    )
+    strip.add_argument(
+        "--no-strip-artifacts", action="store_true",
+        help="Manter artefatos de conversao na saida.",
+    )
+    strip.add_argument(
+        "--no-strip-references", action="store_true",
+        help="Manter blocos de referencias bibliograficas.",
+    )
+
     # OCR
     ocr = parser.add_argument_group("OCR")
     ocr.add_argument("--ocr", action="store_true", help="Habilitar OCR seletivo por pagina (requer pytesseract).")
@@ -182,6 +197,9 @@ def _convert_single(input_path: Path, output_path: Path, cfg: dict) -> bool:
         ocr_cache_enabled=cfg.get("ocr_cache", False),
         ocr_cache_dir=cfg.get("ocr_cache_dir"),
         rag_optimize=cfg.get("rag", False),
+        strip_footnotes_flag=cfg.get("strip_footnotes", True),
+        strip_artifacts_flag=cfg.get("strip_artifacts", True),
+        strip_references_flag=cfg.get("strip_references", True),
     )
     elapsed = time.monotonic() - start
 

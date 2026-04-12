@@ -33,6 +33,9 @@ DEFAULTS = {
     "ocr_cache": False,
     "ocr_cache_dir": None,
     "rag": False,
+    "strip_footnotes": True,
+    "strip_artifacts": True,
+    "strip_references": True,
 }
 
 
@@ -108,6 +111,12 @@ def merge_cli_into_config(cfg: dict, args) -> dict:
         result["detect_columns"] = True
     if hasattr(args, "output_format") and args.output_format is not None:
         result["output_format"] = args.output_format
+    if hasattr(args, "no_strip_footnotes") and args.no_strip_footnotes:
+        result["strip_footnotes"] = False
+    if hasattr(args, "no_strip_artifacts") and args.no_strip_artifacts:
+        result["strip_artifacts"] = False
+    if hasattr(args, "no_strip_references") and args.no_strip_references:
+        result["strip_references"] = False
     if hasattr(args, "rag") and args.rag:
         result["rag"] = True
     if hasattr(args, "ocr_cache") and args.ocr_cache:

@@ -131,6 +131,9 @@ def convert_document(
     ocr_cache_enabled: bool = False,
     ocr_cache_dir: str | None = None,
     rag_optimize: bool = False,
+    strip_footnotes_flag: bool = True,
+    strip_artifacts_flag: bool = True,
+    strip_references_flag: bool = True,
 ) -> ConversionResult:
     """Converte um documento jurídico para Markdown estruturado.
 
@@ -271,6 +274,19 @@ def convert_document(
         from .footnote_relocator import relocate_orphan_footnotes
         result.markdown = relocate_orphan_footnotes(result.markdown)
 
+        # 4d. Remoção seletiva de conteúdo (content_stripper)
+        from .content_stripper import (
+            strip_conversion_artifacts,
+            strip_footnotes,
+            strip_reference_blocks,
+        )
+        if strip_footnotes_flag:
+            result.markdown = strip_footnotes(result.markdown)
+        if strip_artifacts_flag:
+            result.markdown = strip_conversion_artifacts(result.markdown)
+        if strip_references_flag:
+            result.markdown = strip_reference_blocks(result.markdown)
+
         result.stats["chars_final"] = len(result.markdown)
         result.stats["lines_final"] = result.markdown.count("\n")
 
@@ -315,6 +331,9 @@ def convert_batch(
     output_format: str = "md",
     max_workers: int | None = None,
     rag_optimize: bool = False,
+    strip_footnotes_flag: bool = True,
+    strip_artifacts_flag: bool = True,
+    strip_references_flag: bool = True,
 ) -> list[ConversionResult]:
     """Converte múltiplos documentos em lote.
 
@@ -349,6 +368,9 @@ def convert_batch(
             detect_columns=detect_columns,
             output_format=output_format,
             rag_optimize=rag_optimize,
+            strip_footnotes_flag=strip_footnotes_flag,
+            strip_artifacts_flag=strip_artifacts_flag,
+            strip_references_flag=strip_references_flag,
         )
 
     results = []
@@ -378,6 +400,9 @@ def convert_batch(
             output_format=output_format,
             max_workers=max_workers,
             rag_optimize=rag_optimize,
+            strip_footnotes_flag=strip_footnotes_flag,
+            strip_artifacts_flag=strip_artifacts_flag,
+            strip_references_flag=strip_references_flag,
         )
         results.append(result)
 
