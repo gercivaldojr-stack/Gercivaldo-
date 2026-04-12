@@ -431,9 +431,9 @@ if uploaded_files:
                 ocr_cache_enabled=ocr_cache_enabled and is_pdf,
                 ocr_cache_dir=None,
                 rag_optimize=rag_optimize,
-                strip_footnotes_flag=strip_footnotes_opt,
-                strip_artifacts_flag=strip_artifacts_opt,
-                strip_references_flag=strip_references_opt,
+                strip_footnotes_flag=bool(strip_footnotes_opt),
+                strip_artifacts_flag=bool(strip_artifacts_opt),
+                strip_references_flag=bool(strip_references_opt),
             )
             results.append(result)
 
