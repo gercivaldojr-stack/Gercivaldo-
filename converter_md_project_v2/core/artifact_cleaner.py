@@ -128,6 +128,56 @@ def remove_layout_artifacts(text: str) -> tuple[int, str]:
     return count, text
 
 
+# Padrões indicativos de ficha catalográfica
+_CATALOG_INDICATORS = [
+    re.compile(r'ISBN\s+[\d\-]+', re.IGNORECASE),
+    re.compile(r'CDD\s+\d', re.IGNORECASE),
+    re.compile(r'CDU\s+\d', re.IGNORECASE),
+    re.compile(r'Dados\s+Internacionais\s+de\s+Cataloga', re.IGNORECASE),
+    re.compile(r'Ficha\s+[Cc]atalogr[áa]fica'),
+    re.compile(r'Catalogação\s+na\s+(?:fonte|publicação)', re.IGNORECASE),
+]
+
+
+def strip_catalog_block(text: str) -> tuple[int, str]:
+    """Detecta e remove blocos de ficha catalográfica.
+
+    Identifica região com ISBN, CDD/CDU, "Dados Internacionais de
+    Catalogação" e remove o bloco inteiro (geralmente nas primeiras
+    páginas de livros).
+
+    Returns: (count_removed, cleaned_text)
+    """
+    lines = text.split('\n')
+    best_start = -1
+    best_end = -1
+    best_count = 0
+
+    for i, line in enumerate(lines):
+        indicators = sum(
+            1 for pat in _CATALOG_INDICATORS if pat.search(line)
+        )
+        if indicators > 0 and best_start == -1:
+            best_start = max(0, i - 3)
+        if indicators > 0:
+            best_end = i + 1
+            best_count += indicators
+
+    if best_count >= 2 and best_start >= 0:
+        # Extend end to include a few more lines (equipe editorial etc.)
+        extend_end = min(best_end + 5, len(lines))
+        while extend_end < len(lines) and lines[extend_end].strip():
+            extend_end += 1
+        removed = lines[best_start:extend_end]
+        result = lines[:best_start] + lines[extend_end:]
+        logger.info(
+            "strip_catalog_block: removidas %d linhas de ficha catalográfica",
+            len(removed),
+        )
+        return 1, '\n'.join(result)
+    return 0, text
+
+
 def clean_artifacts(text: str) -> str:
     """Pipeline completo de limpeza de artefatos.
 
@@ -135,6 +185,7 @@ def clean_artifacts(text: str) -> str:
     """
     _, text = remove_spurious_metadata(text)
     _, text = remove_layout_artifacts(text)
+    _, text = strip_catalog_block(text)
 
     # Normalizar excesso de linhas em branco resultante das remoções
     text = re.sub(r'\n{4,}', '\n\n\n', text)
