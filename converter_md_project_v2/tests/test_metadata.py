@@ -28,7 +28,7 @@ class TestGenerateFrontmatter:
         text = "\n\n\n"
         result = generate_frontmatter(text, filename="meu_documento.pdf")
         assert 'titulo:' in result
-        assert 'meu_documento' in result
+        assert 'meu documento' in result or 'meu_documento' in result
 
     def test_extracts_proad_number(self):
         """Deve detectar número PROAD/SEI no texto."""

@@ -52,28 +52,64 @@ def generate_frontmatter(
         r"|processo_origem|comarca|acoes_cumuladas)\s*:", re.IGNORECASE
     )
     _skip_title_words = {"sumário", "índice", "sumario", "indice"}
-    for line in text.splitlines():
-        stripped = line.strip().lstrip("#").strip()
-        if not stripped or len(stripped) <= 5:
-            continue
-        # Pular delimitadores de frontmatter
-        if stripped == "---":
-            continue
-        # Pular linhas que parecem YAML (chave: "valor")
-        if _yaml_keys.match(stripped):
-            continue
-        if re.match(r"^\w+:\s+[\"']", stripped):
-            continue
-        # Pular "Sumário" / "Índice" — não são títulos de documento
-        if stripped.lower() in _skip_title_words:
-            continue
-        # Pular linhas de TOC (- [Texto](# ou - [Texto)
-        if stripped.startswith("- ["):
-            continue
-        meta["titulo"] = stripped[:120]
-        break
+
+    # D1-fix: para doutrina, buscar "Manual de...", "Curso de..." no texto
+    _doutrina_title_re = re.compile(
+        r'(?:Manual|Curso|Tratado|Compêndio|Lições)\s+de\s+[A-ZÀ-Ú][\w\s]+',
+        re.IGNORECASE,
+    )
+    doutrina_title = _doutrina_title_re.search(text[:3000])
+    if doutrina_title:
+        meta["titulo"] = doutrina_title.group(0).strip()[:120]
+
+    # D1-fix: também usar ISBN para confirmar ficha catalográfica
+    isbn_match = re.search(r'ISBN\s+([\d\-]+)', text[:5000])
+    if isbn_match and "titulo" not in meta:
+        # Buscar título próximo ao ISBN
+        for line in text[:5000].splitlines():
+            stripped = line.strip()
+            if _doutrina_title_re.search(stripped):
+                meta["titulo"] = stripped[:120]
+                break
+
     if "titulo" not in meta:
-        meta["titulo"] = filename.rsplit(".", 1)[0] if filename else "Documento sem título"
+        for line in text.splitlines():
+            stripped = line.strip().lstrip("#").strip()
+            if not stripped or len(stripped) <= 5:
+                continue
+            if stripped == "---":
+                continue
+            if _yaml_keys.match(stripped):
+                continue
+            if re.match(r"^\w+:\s+[\"']", stripped):
+                continue
+            if stripped.lower() in _skip_title_words:
+                continue
+            if stripped.startswith("- ["):
+                continue
+            # D1-fix: pular nomes de autores (2-3 palavras em MAIÚSCULAS, sem keywords)
+            if (
+                stripped.isupper()
+                and len(stripped.split()) <= 4
+                and not re.search(
+                    r'\b(?:PETIÇÃO|SENTENÇA|ACÓRDÃO|HABEAS|RECURSO|'
+                    r'MANDADO|CONTESTAÇÃO|AGRAVO|APELAÇÃO|EMBARGOS|'
+                    r'FATOS|DIREITO|PEDIDOS|MÉRITO|RELATÓRIO|'
+                    r'FUNDAMENTAÇÃO|DISPOSITIVO|EMENTA|VOTO)\b',
+                    stripped,
+                )
+            ):
+                continue
+            meta["titulo"] = stripped[:120]
+            break
+
+    if "titulo" not in meta:
+        # D1-fix: fallback para filename limpo
+        fn = filename.rsplit(".", 1)[0] if filename else ""
+        fn = fn.replace("_", " ").replace("-", " ").strip()
+        # Remover (1), (2) etc do final
+        fn = re.sub(r'\(\d+\)$', '', fn).strip()
+        meta["titulo"] = fn if fn else "Documento sem título"
 
     # PROAD / SEI
     proad_match = re.search(
@@ -90,22 +126,30 @@ def generate_frontmatter(
         re.IGNORECASE,
     )
     if date_match:
-        meta["data"] = date_match.group(0)
+        day = int(date_match.group(1))
+        if 1 <= day <= 31:
+            meta["data"] = date_match.group(0)
+        # D1-fix: day > 31 é inválido (ex: "61 de dezembro") → descartar
     else:
         iso_match = re.search(r"\d{2}/\d{2}/\d{4}", text)
         if iso_match:
             meta["data"] = iso_match.group(0)
 
-    # Órgão emissor
-    orgao_patterns = [
-        r"(?:TRIBUNAL|CONSELHO|CORREGEDORIA|MINISTÉRIO|SECRETARIA)"
-        r"[\w\s]{3,60}?(?=\n)",
-    ]
-    for pat in orgao_patterns:
-        m = re.search(pat, text, re.IGNORECASE)
-        if m:
-            meta["orgao_emissor"] = m.group(0).strip()[:80]
-            break
+    # Órgão emissor (D1-fix: ignorar para doutrina/livros)
+    is_book = bool(_doutrina_title_re.search(text[:3000]))
+    if not is_book:
+        orgao_patterns = [
+            r"(?:TRIBUNAL|CONSELHO|CORREGEDORIA|MINISTÉRIO|SECRETARIA)"
+            r"[\w\s]{3,60}?(?=\n)",
+        ]
+        for pat in orgao_patterns:
+            m = re.search(pat, text, re.IGNORECASE)
+            if m:
+                val = m.group(0).strip()
+                # Excluir falsos positivos de livros
+                if "Conselho Fiscal" not in val:
+                    meta["orgao_emissor"] = val[:80]
+                break
 
     # P8: Metadados expandidos da peça jurídica
     if extract_metadata:
