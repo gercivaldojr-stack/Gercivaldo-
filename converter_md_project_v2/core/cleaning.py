@@ -602,6 +602,11 @@ def rejoin_broken_paragraphs(text: str) -> str:
             buffer = buffer + " " + stripped
             continue
 
+        # Forte sinal de continuação: próxima linha começa com minúscula
+        if stripped and stripped[0].islower():
+            buffer = buffer + " " + stripped
+            continue
+
         if not _ends_sentence(buffer) and not _is_next_line_protected(stripped):
             buffer = buffer + " " + stripped
         else:
