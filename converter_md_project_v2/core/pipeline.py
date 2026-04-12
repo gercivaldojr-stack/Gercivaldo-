@@ -15,6 +15,8 @@ from .piece_separator import format_separated_pieces, separate_pieces
 
 logger = logging.getLogger(__name__)
 
+MIN_CONSECUTIVE_HEADINGS_FOR_TOC = 5
+
 
 def _strip_existing_frontmatter(text: str) -> str:
     """Remove frontmatter YAML, sumário embutido e lixo residual do original.
@@ -105,7 +107,7 @@ def _strip_existing_frontmatter(text: str) -> str:
         elif is_blank and heading_run > 0:
             cleaned.append(line)
         else:
-            if heading_run >= 5:
+            if heading_run >= MIN_CONSECUTIVE_HEADINGS_FOR_TOC:
                 # Remove o bloco de headings consecutivos (TOC residual)
                 cleaned = cleaned[:heading_start]
                 logger.info(
@@ -115,7 +117,7 @@ def _strip_existing_frontmatter(text: str) -> str:
             heading_run = 0
             cleaned.append(line)
 
-    if heading_run >= 5:
+    if heading_run >= MIN_CONSECUTIVE_HEADINGS_FOR_TOC:
         cleaned = cleaned[:heading_start]
 
     return "\n".join(cleaned)
