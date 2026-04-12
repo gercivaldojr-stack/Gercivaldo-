@@ -88,7 +88,37 @@ def _strip_existing_frontmatter(text: str) -> str:
         result.append(lines[i])
         i += 1
 
-    return "\n".join(result)
+    # Pass extra: detectar bloco de TOC residual (5+ headings consecutivos sem corpo)
+    cleaned = []
+    heading_run = 0
+    heading_start = -1
+    for j, line in enumerate(result):
+        stripped = line.strip()
+        is_heading = bool(re.match(r'^#{1,6}\s+', stripped))
+        is_blank = not stripped
+
+        if is_heading:
+            if heading_run == 0:
+                heading_start = len(cleaned)
+            heading_run += 1
+            cleaned.append(line)
+        elif is_blank and heading_run > 0:
+            cleaned.append(line)
+        else:
+            if heading_run >= 5:
+                # Remove o bloco de headings consecutivos (TOC residual)
+                cleaned = cleaned[:heading_start]
+                logger.info(
+                    "Removido bloco TOC residual (%d headings consecutivos)",
+                    heading_run,
+                )
+            heading_run = 0
+            cleaned.append(line)
+
+    if heading_run >= 5:
+        cleaned = cleaned[:heading_start]
+
+    return "\n".join(cleaned)
 
 
 @dataclass
