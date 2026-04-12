@@ -89,6 +89,7 @@ def clean_text(text: str, remove_headers_footers: bool = True) -> str:
     text = remove_residual_pagination(text)
     text = reconnect_cnj_numbers(text)
     text = reconstruct_pdf_headings(text)
+    text = split_fused_headings(text)
     text = rejoin_broken_paragraphs(text)
     text = fix_word_spacing(text)
     text = separate_enumerations(text)
@@ -97,6 +98,48 @@ def clean_text(text: str, remove_headers_footers: bool = True) -> str:
     text = normalize_paragraphs(text)
 
     return text.strip()
+
+
+_FUSED_HEADING_PATTERNS = [
+    re.compile(r'(.*?)\s+(Cap[íi]tulo\s+\d+\s+.+)$', re.IGNORECASE),
+    re.compile(r'(.*?)\s+(Quadro\s+mnem[ôo]nico.*)$', re.IGNORECASE),
+    re.compile(r'(.*?)\s+(PARTE\s+[IVXLC]+\s+.+)$'),
+    re.compile(r'(.*?)\s+(Se[çc][ãa]o\s+[IVXLC\d]+\s+.+)$', re.IGNORECASE),
+]
+
+
+def split_fused_headings(text: str) -> str:
+    """Separa títulos fundidos em uma única linha.
+
+    Detecta padrões como:
+    "6. Fontes formais do direito empresarial Capítulo 1 Empresa e Empresário"
+    e faz split em duas linhas separadas.
+    """
+    lines = text.split('\n')
+    result = []
+    split_count = 0
+    for line in lines:
+        stripped = line.strip()
+        if not stripped or stripped.startswith('#'):
+            result.append(line)
+            continue
+        matched = False
+        for pat in _FUSED_HEADING_PATTERNS:
+            m = pat.match(stripped)
+            if m and len(m.group(1).strip()) > 5:
+                result.append(m.group(1).strip())
+                result.append("")
+                result.append(m.group(2).strip())
+                split_count += 1
+                matched = True
+                break
+        if not matched:
+            result.append(line)
+    if split_count > 0:
+        logger.info(
+            "split_fused_headings: %d linhas separadas", split_count,
+        )
+    return '\n'.join(result)
 
 
 def reconstruct_pdf_headings(text: str) -> str:
