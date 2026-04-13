@@ -90,11 +90,13 @@ def _strip_existing_frontmatter(text: str) -> str:
         result.append(lines[i])
         i += 1
 
-    # Pass extra: detectar bloco de TOC residual (5+ headings consecutivos sem corpo)
+    # Pass extra: detectar bloco de TOC residual (N+ headings consecutivos
+    # sem corpo). Preserva o ÚLTIMO heading antes do body (é o real).
     cleaned = []
     heading_run = 0
     heading_start = -1
-    for j, line in enumerate(result):
+    last_heading_start = -1
+    for line in result:
         stripped = line.strip()
         is_heading = bool(re.match(r'^#{1,6}\s+', stripped))
         is_blank = not stripped
@@ -102,17 +104,20 @@ def _strip_existing_frontmatter(text: str) -> str:
         if is_heading:
             if heading_run == 0:
                 heading_start = len(cleaned)
+            last_heading_start = len(cleaned)
             heading_run += 1
             cleaned.append(line)
         elif is_blank and heading_run > 0:
             cleaned.append(line)
         else:
             if heading_run >= MIN_CONSECUTIVE_HEADINGS_FOR_TOC:
-                # Remove o bloco de headings consecutivos (TOC residual)
-                cleaned = cleaned[:heading_start]
+                # Remove os N-1 primeiros headings (TOC), preserva último
+                # que é o heading real seguido de body
+                cleaned = cleaned[:heading_start] + cleaned[last_heading_start:]
                 logger.info(
-                    "Removido bloco TOC residual (%d headings consecutivos)",
-                    heading_run,
+                    "Removido bloco TOC residual (%d headings, "
+                    "preservado o último)",
+                    heading_run - 1,
                 )
             heading_run = 0
             cleaned.append(line)
