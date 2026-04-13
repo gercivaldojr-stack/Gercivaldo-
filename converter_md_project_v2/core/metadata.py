@@ -107,6 +107,14 @@ def generate_frontmatter(
                 continue
             if stripped.startswith("- ["):
                 continue
+            # P1-fix: pular linhas que são referências bibliográficas
+            # Padrão: "SOBRENOME, Nome. [...]. In: [...]" ou "Disponível em:" ou "Acesso em:"
+            if (
+                re.match(r'^[A-ZÀ-Ú]{2,}[A-ZÀ-Ú\s]*,\s+[A-ZÀ-Ú]', stripped)
+                and ('. In:' in stripped or 'Acesso em' in stripped
+                     or 'Disponível em' in stripped)
+            ):
+                continue
             # D1-fix: pular nomes de autores (2-3 palavras em MAIÚSCULAS, sem keywords)
             if (
                 stripped.isupper()

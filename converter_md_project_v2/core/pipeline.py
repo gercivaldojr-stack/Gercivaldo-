@@ -331,10 +331,18 @@ def convert_document(
 
         # 4d. Remoção seletiva de conteúdo (content_stripper)
         from .content_stripper import (
+            fix_malformed_urls,
             strip_conversion_artifacts,
             strip_footnotes,
+            strip_inline_biblio_references,
             strip_reference_blocks,
+            strip_ui_text,
         )
+        # Sempre aplicar: URL fix, UI text, biblio inline
+        result.markdown = fix_malformed_urls(result.markdown)
+        result.markdown = strip_ui_text(result.markdown)
+        if strip_references_flag:
+            result.markdown = strip_inline_biblio_references(result.markdown)
         if strip_footnotes_flag:
             result.markdown = strip_footnotes(result.markdown)
         if strip_artifacts_flag:

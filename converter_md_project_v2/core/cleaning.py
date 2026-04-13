@@ -92,6 +92,7 @@ def clean_text(text: str, remove_headers_footers: bool = True) -> str:
     text = split_fused_headings(text)
     text = rejoin_broken_paragraphs(text)
     text = fix_word_spacing(text)
+    text = fix_enum_spacing(text)
     text = separate_enumerations(text)
     text = normalize_legal_citations(text)
     text = split_long_paragraphs(text)
@@ -522,6 +523,36 @@ def remove_repeated_headers_footers(
             cleaned_lines.append(line)
 
     return "\n".join(cleaned_lines)
+
+
+def fix_enum_spacing(text: str) -> str:
+    """Garante espaço após marcadores de enumeração alfanumérica.
+
+    Ex: "a)um elemento" → "a) um elemento"
+        "1)texto" → "1) texto"
+    """
+    # a), b), c)... no início da linha sem espaço
+    text = re.sub(
+        r'^([a-z])\)(?=\S)',
+        r'\1) ',
+        text,
+        flags=re.MULTILINE,
+    )
+    # 1), 2), 3)...
+    text = re.sub(
+        r'^(\d{1,2})\)(?=\S)',
+        r'\1) ',
+        text,
+        flags=re.MULTILINE,
+    )
+    # i), ii), iii)... (romanos minúsculos)
+    text = re.sub(
+        r'^([ivxlc]+)\)(?=\S)',
+        r'\1) ',
+        text,
+        flags=re.MULTILINE,
+    )
+    return text
 
 
 def separate_enumerations(text: str) -> str:

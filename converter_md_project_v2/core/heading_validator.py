@@ -167,17 +167,32 @@ def truncate_heading_with_body(text: str, max_words: int = 15) -> str:
             result.append(line)
             continue
 
-        # Procurar ponto de corte: verbo conjugado após ~8 palavras
+        # Procurar ponto de corte após ~4 palavras:
+        # 1) Sentence start: palavra isolada de 1-2 letras maiúsculas
+        #    seguida de outra palavra maiúscula (ex: "A noção", "O direito")
+        # 2) Verbo conjugado em qualquer posição após a 4a palavra
         cut_point = -1
-        for wi in range(8, min(len(words), max_words + 5)):
+
+        # Tentativa 1: detectar "A/O/É/Uma/Esta/..." inicio de frase
+        _SENTENCE_STARTERS = {
+            'A', 'O', 'É', 'Um', 'Uma', 'Esta', 'Este',
+            'Estes', 'Estas', 'Aquele', 'Isto', 'Isso',
+            'No', 'Na', 'Os', 'As', 'Em', 'Para', 'Por',
+            'De', 'Do', 'Da', 'Nos', 'Nas', 'Sua', 'Seu',
+        }
+        for wi in range(4, min(len(words), max_words + 5)):
             word = words[wi]
-            if _VERB_INDICATOR.match(word):
-                # Verificar se a palavra anterior é um substantivo (capitalized)
-                if wi > 0 and words[wi - 1][0].isupper():
+            if word in _SENTENCE_STARTERS:
+                # Verificar se a próxima palavra tem estrutura de frase
+                if wi + 1 < len(words) and words[wi + 1]:
                     cut_point = wi
                     break
-                # Ou se a frase simplesmente começa com maiúscula
-                if word[0].isupper():
+
+        # Tentativa 2: verbo conjugado (fallback)
+        if cut_point == -1:
+            for wi in range(4, min(len(words), max_words + 5)):
+                word = words[wi]
+                if _VERB_INDICATOR.match(word):
                     cut_point = wi
                     break
 

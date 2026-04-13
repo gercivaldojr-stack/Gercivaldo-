@@ -38,11 +38,33 @@ def _remove_inline_footnote_numbers(text: str) -> str:
     """Remove dígitos de rodapé colados ao texto.
 
     Ex: "outrem.1" → "outrem.", "Haftung3" → "Haftung"
-    Não remove: "Art. 123", "Lei 8.666", "§ 1º", anos (2024)
+    Não remove: "Art. 123", "Lei 8.666", "§ 1º", anos (2024),
+    datas em frontmatter YAML ("data: \"4 de Novembro\"").
     """
     lines = text.split('\n')
     result = []
-    for line in lines:
+    in_frontmatter = False
+    _yaml_key_re = re.compile(
+        r'^(?:titulo|data|status|convertido_em|proad|orgao_emissor|'
+        r'tipo_peca|paciente|autor|reu|impetrante|autoridade_coatora|'
+        r'pedido_liminar|processo_origem|comarca|acoes_cumuladas|'
+        r'area|subarea|tags|ultima_revisao|edicao|fonte|tipo|ramo|'
+        r'subramos|jurisdicao|atualizado_ate|formato_origem)\s*:',
+        re.IGNORECASE,
+    )
+    for idx, line in enumerate(lines):
+        # Toggle frontmatter state on --- markers
+        if line.strip() == '---':
+            if idx == 0 or in_frontmatter:
+                in_frontmatter = not in_frontmatter
+            result.append(line)
+            continue
+
+        # Pular linhas em frontmatter YAML
+        if in_frontmatter or _yaml_key_re.match(line.strip()):
+            result.append(line)
+            continue
+
         # Pular headings e linhas de tabela
         if line.strip().startswith(('#', '|')):
             result.append(line)
@@ -50,13 +72,23 @@ def _remove_inline_footnote_numbers(text: str) -> str:
 
         def _replace(m):
             start = m.start()
+            end = m.end()
             # Pegar os 15 chars antes do match para verificar contexto
             ctx = line[max(0, start - 15):start]
             if _NOT_FOOTNOTE_CONTEXT.search(ctx):
                 return m.group(0)  # Manter — é referência legal
+            # Verificar se o dígito é parte de uma data "N de <mês>"
+            ctx_after = line[end:end + 25]
+            if re.match(
+                r'\s+de\s+(?:janeiro|fevereiro|março|abril|maio|'
+                r'junho|julho|agosto|setembro|outubro|novembro|'
+                r'dezembro)',
+                ctx_after, re.IGNORECASE,
+            ):
+                return m.group(0)  # Manter — é dia de data
             return ''
 
-        # Padrão: 1-2 dígitos colados após letra/pontuação
+        # Padrão 1: 1-2 dígitos colados após letra/pontuação (sem espaço)
         new_line = re.sub(
             r'(?<=[a-záéíóúàâêôãõç.,:;!?\)\]"\u201d])'
             r'\d{1,2}'
@@ -64,6 +96,40 @@ def _remove_inline_footnote_numbers(text: str) -> str:
             _replace,
             line,
         )
+
+        # Padrão 2: dígito ISOLADO entre palavras (footnote com espaço)
+        # Ex: "publicização 1 previsto" → "publicização previsto"
+        # Protege contra Art. 1, Lei 8.666, ano 2024, etc. via contexto
+        def _replace_isolated(m):
+            start = m.start()
+            ctx_before = new_line[max(0, start - 20):start]
+            if _NOT_FOOTNOTE_CONTEXT.search(ctx_before):
+                return m.group(0)
+            # Verificar se é data: "N de <mês>"
+            end = m.end()
+            ctx_after = new_line[end:end + 25]
+            if re.match(
+                r'\s*(?:,|e|ou|a)\s*\d',
+                ctx_after,
+            ):
+                return m.group(0)  # "1 e 2", "1, 2" — enumeração
+            if re.match(
+                r'\s+de\s+(?:janeiro|fevereiro|março|abril|maio|'
+                r'junho|julho|agosto|setembro|outubro|novembro|'
+                r'dezembro)',
+                ctx_after, re.IGNORECASE,
+            ):
+                return m.group(0)
+            # Substituir dígito por nada, preservando 1 espaço
+            return ' '
+
+        new_line = re.sub(
+            r'(?<=[a-záéíóúàâêôãõç])\s+(\d{1,2})\s+(?=[a-záéíóúàâêôãõç])',
+            _replace_isolated,
+            new_line,
+        )
+        # Limpar espaços duplos resultantes
+        new_line = re.sub(r'  +', ' ', new_line)
         result.append(new_line)
     return '\n'.join(result)
 
@@ -143,6 +209,59 @@ def strip_conversion_artifacts(text: str) -> str:
 # ============================================================
 # 3. strip_reference_blocks
 # ============================================================
+
+# ============================================================
+# Referências bibliográficas inline (P2): blocos "SOBRENOME, Nome. [...]. Acesso em:"
+# ============================================================
+
+_INLINE_BIBLIO_RE = re.compile(
+    r'^[A-ZÀ-Ú]{2,}[A-ZÀ-Ú\s]*,\s+[A-ZÀ-Ú][^\n]*'
+    r'(?:Acesso\s+em[:.]|Dispon[íi]vel\s+em[:.])'
+    r'[^\n]*\.?',
+    re.IGNORECASE | re.MULTILINE,
+)
+
+
+def strip_inline_biblio_references(text: str) -> str:
+    """Remove blocos de referência bibliográfica no corpo do texto.
+
+    Padrão: "SOBRENOME, Nome. [...]. Disponível em: [...]. Acesso em: [...]."
+    Comum em artigos do JusBrasil e citações acadêmicas.
+    """
+    return _INLINE_BIBLIO_RE.sub('', text)
+
+
+# ============================================================
+# URLs malformadas (P7)
+# ============================================================
+
+def fix_malformed_urls(text: str) -> str:
+    """Corrige URLs sem protocolo: 'httpswww' → 'https://www.'."""
+    text = re.sub(r'\bhttpswww\.', 'https://www.', text)
+    text = re.sub(r'\bhttpwww\.', 'http://www.', text)
+    return text
+
+
+# ============================================================
+# Textos de UI/navegação (P8)
+# ============================================================
+
+_UI_TEXT_PATTERNS = [
+    re.compile(r'^\s*Clique\s+aqui\s+e\s+acesse.*$', re.IGNORECASE | re.MULTILINE),
+    re.compile(r'^\s*Clique\s+aqui\s+para.*$', re.IGNORECASE | re.MULTILINE),
+    re.compile(r'^\s*Saiba\s+mais\s+em.*$', re.IGNORECASE | re.MULTILINE),
+    re.compile(r'^\s*Veja\s+também[:.]?.*$', re.IGNORECASE | re.MULTILINE),
+    re.compile(r'^\s*Compartilhe.*$', re.IGNORECASE | re.MULTILINE),
+    re.compile(r'^\s*Imprimir.*$', re.IGNORECASE | re.MULTILINE),
+]
+
+
+def strip_ui_text(text: str) -> str:
+    """Remove textos de navegação/UI comuns em doutrina digital."""
+    for pat in _UI_TEXT_PATTERNS:
+        text = pat.sub('', text)
+    return text
+
 
 _REF_HEADING_RE = re.compile(
     r'^(#{1,6})\s+'
