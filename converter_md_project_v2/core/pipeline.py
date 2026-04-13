@@ -350,6 +350,10 @@ def convert_document(
         if strip_references_flag:
             result.markdown = strip_reference_blocks(result.markdown)
 
+        # 4e. Polimento final de Markdown (md_polish)
+        from .md_polish import polish_markdown
+        result.markdown = polish_markdown(result.markdown)
+
         result.stats["chars_final"] = len(result.markdown)
         result.stats["lines_final"] = result.markdown.count("\n")
 
