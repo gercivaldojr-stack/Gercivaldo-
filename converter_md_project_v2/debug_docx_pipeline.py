@@ -10,9 +10,9 @@ import sys
 
 sys.path.insert(0, '.')
 
-from docx import Document
+from docx import Document  # noqa: E402
 
-from core.pipeline import convert_document
+from core.pipeline import convert_document  # noqa: E402
 
 
 def build_real_docx() -> bytes:
