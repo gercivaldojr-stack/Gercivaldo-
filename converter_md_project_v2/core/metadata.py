@@ -53,19 +53,34 @@ def generate_frontmatter(
     )
     _skip_title_words = {"sumário", "índice", "sumario", "indice"}
 
-    # D1-fix: para doutrina, buscar "Manual de...", "Curso de..." no texto
-    # Limitar a uma linha (sem cruzar \n) e máximo 80 chars
+    # D1-fix: regex para detectar doutrina no texto e no filename
     _doutrina_title_re = re.compile(
         r'(?:Manual|Curso|Tratado|Compêndio|Lições)\s+de\s+[A-ZÀ-Ú][^\n]{3,80}',
         re.IGNORECASE,
     )
+    # Filename: _ é word char, usar (?:^|[\s_-]) em vez de \b
+    _doutrina_fn_re = re.compile(
+        r'(?:^|[\s_\-])(?:Manual|Curso|Tratado|Compêndio|Lições)'
+        r'(?=$|[\s_\-])',
+        re.IGNORECASE,
+    )
+
+    # Prioridade 1: texto com "Manual de X..." (mais preciso)
     doutrina_title = _doutrina_title_re.search(text[:3000])
     if doutrina_title:
         title_raw = doutrina_title.group(0).strip()
-        # Truncar em pontuação ou números de edição
         title_raw = re.split(r'\s+\d+[ªº°]\s*(?:ed|edição)', title_raw)[0]
         title_raw = re.split(r'[.;]', title_raw)[0]
         meta["titulo"] = title_raw.strip()[:120]
+
+    # Prioridade 2: filename com keyword de doutrina (fallback robusto)
+    if "titulo" not in meta and filename and _doutrina_fn_re.search(filename):
+        fn_base = filename.rsplit(".", 1)[0]
+        fn_clean = fn_base.replace("_", " ").replace("-", " ").strip()
+        fn_clean = re.sub(r'\(\d+\)$', '', fn_clean).strip()
+        fn_clean = re.sub(r'\s+\d{4}$', '', fn_clean).strip()
+        if fn_clean:
+            meta["titulo"] = fn_clean
 
     # D1-fix: também usar ISBN para confirmar ficha catalográfica
     isbn_match = re.search(r'ISBN\s+([\d\-]+)', text[:5000])
