@@ -236,9 +236,28 @@ def strip_inline_biblio_references(text: str) -> str:
 # ============================================================
 
 def fix_malformed_urls(text: str) -> str:
-    """Corrige URLs sem protocolo: 'httpswww' → 'https://www.'."""
+    """Corrige URLs sem protocolo: 'httpswww' → 'https://www.'.
+
+    Casos tratados:
+    - "httpswww.site.com" → "https://www.site.com" (com ponto)
+    - "httpswwwsite.com" → "https://www.site.com" (sem ponto após www)
+    - "httpwww..." análogo para http
+    """
+    # Com ponto após www (formato original)
     text = re.sub(r'\bhttpswww\.', 'https://www.', text)
     text = re.sub(r'\bhttpwww\.', 'http://www.', text)
+    # Sem ponto entre www e resto do domínio (comum em DOCX real)
+    # httpswwwjaborandi.jusbrasil → https://www.jaborandi.jusbrasil
+    text = re.sub(
+        r'\bhttpswww(?=[a-zA-Z])',
+        'https://www.',
+        text,
+    )
+    text = re.sub(
+        r'\bhttpwww(?=[a-zA-Z])',
+        'http://www.',
+        text,
+    )
     return text
 
 
