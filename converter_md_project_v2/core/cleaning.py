@@ -118,18 +118,35 @@ def split_fused_headings(text: str) -> str:
     lines = text.split('\n')
     result = []
     split_count = 0
+    heading_prefix_re = re.compile(r'^(#{1,6}\s+)(.+)$')
     for line in lines:
         stripped = line.strip()
-        if not stripped or stripped.startswith('#'):
+        if not stripped:
             result.append(line)
             continue
+
+        # Identificar se já é heading e separar prefix do conteúdo
+        heading_m = heading_prefix_re.match(stripped)
+        if heading_m:
+            heading_prefix = heading_m.group(1)
+            content = heading_m.group(2)
+        else:
+            heading_prefix = ""
+            content = stripped
+
         matched = False
         for pat in _FUSED_HEADING_PATTERNS:
-            m = pat.match(stripped)
+            m = pat.match(content)
             if m and len(m.group(1).strip()) > 5:
-                result.append(m.group(1).strip())
+                part1 = m.group(1).strip()
+                part2 = m.group(2).strip()
+                result.append(heading_prefix + part1)
                 result.append("")
-                result.append(m.group(2).strip())
+                # Se era heading, part2 também vira heading (mesmo nível)
+                if heading_prefix:
+                    result.append(heading_prefix + part2)
+                else:
+                    result.append(part2)
                 split_count += 1
                 matched = True
                 break
