@@ -544,12 +544,15 @@ def separate_enumerations(text: str) -> str:
 _SPLIT_LONG_PARA_RE = re.compile(r'([.!?])\s+([A-ZÀ-Ú])')
 
 
-def split_long_paragraphs(text: str, threshold: int = 500) -> str:
+def split_long_paragraphs(text: str, threshold: int = 400) -> str:
     """Re-paragrafação de blocos monolíticos de texto.
 
     Quando uma linha de texto excede `threshold` chars e contém
     padrão '. [Maiúscula]' (fim de frase + início de outra),
     insere quebra de parágrafo no ponto de separação.
+
+    Usa threshold de 400 chars (antes era 500) para capturar mais
+    parágrafos monolíticos em doutrina jurídica.
 
     Preserva headings, blockquotes, tabelas e listas.
     """
