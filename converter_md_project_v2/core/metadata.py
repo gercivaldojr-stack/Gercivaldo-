@@ -54,13 +54,18 @@ def generate_frontmatter(
     _skip_title_words = {"sumário", "índice", "sumario", "indice"}
 
     # D1-fix: para doutrina, buscar "Manual de...", "Curso de..." no texto
+    # Limitar a uma linha (sem cruzar \n) e máximo 80 chars
     _doutrina_title_re = re.compile(
-        r'(?:Manual|Curso|Tratado|Compêndio|Lições)\s+de\s+[A-ZÀ-Ú][\w\s]+',
+        r'(?:Manual|Curso|Tratado|Compêndio|Lições)\s+de\s+[A-ZÀ-Ú][^\n]{3,80}',
         re.IGNORECASE,
     )
     doutrina_title = _doutrina_title_re.search(text[:3000])
     if doutrina_title:
-        meta["titulo"] = doutrina_title.group(0).strip()[:120]
+        title_raw = doutrina_title.group(0).strip()
+        # Truncar em pontuação ou números de edição
+        title_raw = re.split(r'\s+\d+[ªº°]\s*(?:ed|edição)', title_raw)[0]
+        title_raw = re.split(r'[.;]', title_raw)[0]
+        meta["titulo"] = title_raw.strip()[:120]
 
     # D1-fix: também usar ISBN para confirmar ficha catalográfica
     isbn_match = re.search(r'ISBN\s+([\d\-]+)', text[:5000])
@@ -118,18 +123,21 @@ def generate_frontmatter(
     if proad_match:
         meta["proad"] = proad_match.group(1).strip()
 
-    # Data do documento
-    date_match = re.search(
+    # Data do documento - iterar todos matches e pegar primeiro VÁLIDO
+    _date_pat = re.compile(
         r"(\d{1,2})\s+de\s+(janeiro|fevereiro|março|abril|maio|junho|"
         r"julho|agosto|setembro|outubro|novembro|dezembro)\s+de\s+(\d{4})",
-        text,
         re.IGNORECASE,
     )
-    if date_match:
-        day = int(date_match.group(1))
+    valid_date = None
+    for m in _date_pat.finditer(text):
+        day = int(m.group(1))
+        # D1-fix: rejeitar dias inválidos (ex: "61 de dezembro")
         if 1 <= day <= 31:
-            meta["data"] = date_match.group(0)
-        # D1-fix: day > 31 é inválido (ex: "61 de dezembro") → descartar
+            valid_date = m.group(0)
+            break
+    if valid_date:
+        meta["data"] = valid_date
     else:
         iso_match = re.search(r"\d{2}/\d{2}/\d{4}", text)
         if iso_match:
