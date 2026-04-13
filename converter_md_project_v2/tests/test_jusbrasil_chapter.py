@@ -160,3 +160,61 @@ class TestJusBrasilChapter:
         # ou vira [^1]
         assert "publicização 1 previsto" not in r.markdown
         assert "qualquer outra 2 forma" not in r.markdown
+
+
+class TestJusBrasilChapterDocx:
+    """Regressão real com DOCX gerado (paragráfos + headings via python-docx)."""
+
+    def _make_docx(self):
+        import io
+        from docx import Document
+        doc = Document()
+        doc.add_paragraph(
+            "PIRES, Gabriel. Capítulo 11. Serviços Públicos In: PIRES, Gabriel. "
+            "Manual de Direito Administrativo. São Paulo (SP):Editora Revista "
+            "dos Tribunais. 2021. Disponível em: httpswww.jusbrasil.com.br. "
+            "Acesso em: 4 de Novembro de 2025."
+        )
+        doc.add_heading("Capítulo 11. Serviços Públicos", level=1)
+        doc.add_paragraph("Clique aqui e acesse o vídeo sobre o tema.")
+        doc.add_heading("11.1. Relevância e atualidade da questão", level=2)
+        doc.add_paragraph(
+            "A noção jurídica de serviço público tem especial relevância "
+            "no direito administrativo moderno."
+        )
+        doc.add_paragraph("11.2. Conceito")
+        doc.add_paragraph("O serviço público é toda atividade prestada.")
+        buf = io.BytesIO()
+        doc.save(buf)
+        return buf.getvalue()
+
+    def _convert(self):
+        return convert_document(
+            file_bytes=self._make_docx(),
+            filename="Capitulo_11.docx",
+            mode="doutrina",
+        )
+
+    def test_docx_title_not_bibliographic(self):
+        r = self._convert()
+        assert r.success
+        assert 'titulo: "PIRES, Gabriel' not in r.markdown
+        assert "Manual de Direito" in r.markdown
+
+    def test_docx_biblio_removed_from_body(self):
+        r = self._convert()
+        assert "Acesso em: 4 de Novembro de 2025" not in r.markdown
+
+    def test_docx_ui_text_removed(self):
+        r = self._convert()
+        assert "Clique aqui e acesse" not in r.markdown
+
+    def test_docx_paragraphs_not_fused(self):
+        """Paragrafos adjacentes não devem ser fundidos em uma linha só."""
+        r = self._convert()
+        # "11.2. Conceito" e "O serviço público..." devem estar separados
+        assert "11.2. Conceito O serviço público" not in r.markdown
+        assert "Conceito\n\nO serviço público" in r.markdown or (
+            "# 11.2. Conceito" in r.markdown
+            and "O serviço público" in r.markdown
+        )

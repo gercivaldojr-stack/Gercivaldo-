@@ -796,20 +796,26 @@ def _extract_docx(
                 # Strip inline formatting from headings (redundant with #)
                 plain = block.text.strip()
                 parts.append(f"# {plain}")
+                parts.append("")
             elif "heading 2" in style_name:
                 plain = block.text.strip()
                 parts.append(f"## {plain}")
+                parts.append("")
             elif "heading 3" in style_name:
                 plain = block.text.strip()
                 parts.append(f"### {plain}")
+                parts.append("")
             elif "heading 4" in style_name:
                 plain = block.text.strip()
                 parts.append(f"#### {plain}")
+                parts.append("")
             elif "title" in style_name:
                 plain = block.text.strip()
                 parts.append(f"# {plain}")
+                parts.append("")
             else:
                 parts.append(text)
+                parts.append("")
 
         elif isinstance(block, Table):
             md_table = _docx_table_to_markdown(block)
