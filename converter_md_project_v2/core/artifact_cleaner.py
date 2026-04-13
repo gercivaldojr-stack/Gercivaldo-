@@ -130,12 +130,14 @@ def remove_layout_artifacts(text: str) -> tuple[int, str]:
 
 # Padrões indicativos de ficha catalográfica
 _CATALOG_INDICATORS = [
-    re.compile(r'ISBN\s+[\d\-]+', re.IGNORECASE),
-    re.compile(r'CDD\s+\d', re.IGNORECASE),
-    re.compile(r'CDU\s+\d', re.IGNORECASE),
+    re.compile(r'\bISBN[\s:]+[\d\-Xx]+', re.IGNORECASE),
+    re.compile(r'\bCDD\b[\s:]*\d', re.IGNORECASE),
+    re.compile(r'\bCDU\b[\s:]*\d', re.IGNORECASE),
+    re.compile(r'\bCIP\b', re.IGNORECASE),
     re.compile(r'Dados\s+Internacionais\s+de\s+Cataloga', re.IGNORECASE),
     re.compile(r'Ficha\s+[Cc]atalogr[áa]fica'),
     re.compile(r'Catalogação\s+na\s+(?:fonte|publicação)', re.IGNORECASE),
+    re.compile(r'C[âa]mara\s+Brasileira\s+do\s+Livro', re.IGNORECASE),
 ]
 
 
@@ -149,33 +151,40 @@ def strip_catalog_block(text: str) -> tuple[int, str]:
     Returns: (count_removed, cleaned_text)
     """
     lines = text.split('\n')
-    best_start = -1
-    best_end = -1
-    best_count = 0
-
+    # Identificar linhas com indicadores
+    indicator_lines = []
     for i, line in enumerate(lines):
-        indicators = sum(
-            1 for pat in _CATALOG_INDICATORS if pat.search(line)
-        )
-        if indicators > 0 and best_start == -1:
-            best_start = max(0, i - 3)
-        if indicators > 0:
-            best_end = i + 1
-            best_count += indicators
+        for pat in _CATALOG_INDICATORS:
+            if pat.search(line):
+                indicator_lines.append(i)
+                break
 
-    if best_count >= 2 and best_start >= 0:
-        # Extend end to include a few more lines (equipe editorial etc.)
-        extend_end = min(best_end + 5, len(lines))
-        while extend_end < len(lines) and lines[extend_end].strip():
-            extend_end += 1
-        removed = lines[best_start:extend_end]
-        result = lines[:best_start] + lines[extend_end:]
-        logger.info(
-            "strip_catalog_block: removidas %d linhas de ficha catalográfica",
-            len(removed),
-        )
-        return 1, '\n'.join(result)
-    return 0, text
+    if len(indicator_lines) < 2:
+        return 0, text
+
+    # Região: do primeiro ao último indicador, expandida ±3 linhas
+    # mas não atravessar headings próximos
+    first = max(0, indicator_lines[0] - 3)
+    # Reduzir first se encontrar heading na zona expandida
+    for j in range(indicator_lines[0] - 1, first - 1, -1):
+        if j >= 0 and lines[j].strip().startswith('#'):
+            first = j + 1  # parar APÓS o heading
+            break
+
+    last = min(len(lines), indicator_lines[-1] + 3)
+    # Reduzir last se encontrar heading na zona expandida
+    for j in range(indicator_lines[-1] + 1, last):
+        if j < len(lines) and lines[j].strip().startswith('#'):
+            last = j  # parar ANTES do heading
+            break
+
+    removed_count = last - first
+    result = lines[:first] + lines[last:]
+    logger.info(
+        "strip_catalog_block: removidas %d linhas de ficha catalográfica",
+        removed_count,
+    )
+    return 1, '\n'.join(result)
 
 
 def clean_artifacts(text: str) -> str:
