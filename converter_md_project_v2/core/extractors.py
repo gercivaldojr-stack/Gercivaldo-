@@ -360,11 +360,53 @@ def _parse_page_range(spec: str, total_pages: int) -> list[int]:
     return sorted(pages)
 
 
-def _ocr_page(page, lang: str = "por") -> str:
-    """Aplica OCR em uma página PDF via pytesseract.
+def _preprocess_for_ocr(img):
+    """Pre-processa uma imagem antes do OCR para melhorar a precisao em
+    paginas escaneadas de baixa qualidade.
 
-    Renderiza a página como imagem em resolução moderada (200 DPI)
-    para equilibrar qualidade e uso de memória.
+    Aplica escala de cinza, binarizacao (Otsu) e correcao de inclinacao
+    (deskew). Requer opencv-python-headless e numpy; se indisponiveis,
+    retorna a imagem original sem alteracoes (degradacao graciosa).
+    """
+    try:
+        import cv2
+        import numpy as np
+    except ImportError:
+        logger.debug("OpenCV/numpy indisponivel; OCR sem pre-processamento.")
+        return img
+
+    try:
+        arr = np.array(img.convert("L"))
+        _, bin_img = cv2.threshold(
+            arr, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU
+        )
+
+        coords = np.column_stack(np.where(bin_img < 255))
+        if coords.size:
+            angle = cv2.minAreaRect(coords)[-1]
+            angle = -(90 + angle) if angle < -45 else -angle
+            if abs(angle) > 0.5:
+                h, w = bin_img.shape
+                m = cv2.getRotationMatrix2D((w // 2, h // 2), angle, 1.0)
+                bin_img = cv2.warpAffine(
+                    bin_img, m, (w, h),
+                    flags=cv2.INTER_CUBIC,
+                    borderMode=cv2.BORDER_REPLICATE,
+                )
+        from PIL import Image
+        return Image.fromarray(bin_img)
+    except Exception as e:
+        logger.warning("Pre-processamento de OCR falhou: %s", e)
+        return img
+
+
+def _ocr_page(page, lang: str = "por", dpi: int = 200, preprocess: bool = True) -> str:
+    """Aplica OCR em uma pagina PDF via pytesseract.
+
+    Renderiza a pagina como imagem (200 DPI por padrao, equilibrio entre
+    qualidade e uso de memoria). Se preprocess=True, aplica deskew e
+    binarizacao antes do Tesseract para melhorar paginas escaneadas de
+    baixa qualidade.
     """
     try:
         import pytesseract
@@ -374,11 +416,12 @@ def _ocr_page(page, lang: str = "por") -> str:
         return ""
 
     try:
-        # 200 DPI: bom equilíbrio entre qualidade OCR e uso de memória
-        mat = page.get_pixmap(dpi=200)
+        mat = page.get_pixmap(dpi=dpi)
         img = Image.frombytes("RGB", (mat.width, mat.height), mat.samples)
+        if preprocess:
+            img = _preprocess_for_ocr(img)
         text = pytesseract.image_to_string(img, lang=lang)
-        # Liberar memória imediatamente
+        # Liberar memoria imediatamente
         del mat, img
         return text
     except Exception as e:
