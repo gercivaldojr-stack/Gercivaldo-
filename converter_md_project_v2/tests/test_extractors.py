@@ -7,7 +7,9 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from core.extractors import extract_text
+from core.extractors import (  # noqa: E402
+    extract_text, _is_footer_text, _docx_table_to_markdown,
+)
 
 
 class TestExtractText:
@@ -75,6 +77,70 @@ class TestExtractDocx:
         assert "Dos Fatos" in result
         assert "# " in result  # Heading deve ser convertido
 
+    def test_docx_table_extraction(self):
+        """Testa que tabelas em DOCX são extraídas como Markdown tables."""
+        from docx import Document
+        import io
+
+        doc = Document()
+        doc.add_paragraph("Texto antes da tabela.")
+
+        # Adicionar tabela 3x2
+        table = doc.add_table(rows=3, cols=2)
+        table.cell(0, 0).text = "Nome"
+        table.cell(0, 1).text = "Valor"
+        table.cell(1, 0).text = "Item A"
+        table.cell(1, 1).text = "R$ 100"
+        table.cell(2, 0).text = "Item B"
+        table.cell(2, 1).text = "R$ 200"
+
+        doc.add_paragraph("Texto depois da tabela.")
+
+        buffer = io.BytesIO()
+        doc.save(buffer)
+        file_bytes = buffer.getvalue()
+
+        result = extract_text(
+            file_path=None,
+            file_bytes=file_bytes,
+            filename="test.docx",
+        )
+
+        assert "Texto antes da tabela" in result
+        assert "Texto depois da tabela" in result
+        assert "| Nome | Valor |" in result
+        assert "| Item A | R$ 100 |" in result
+        assert "| Item B | R$ 200 |" in result
+        assert "| --- | --- |" in result
+
+    def test_docx_table_order_preserved(self):
+        """Testa que a ordem parágrafos-tabelas é preservada."""
+        from docx import Document
+        import io
+
+        doc = Document()
+        doc.add_paragraph("Parágrafo 1")
+        table = doc.add_table(rows=2, cols=1)
+        table.cell(0, 0).text = "Header"
+        table.cell(1, 0).text = "Data"
+        doc.add_paragraph("Parágrafo 2")
+
+        buffer = io.BytesIO()
+        doc.save(buffer)
+        file_bytes = buffer.getvalue()
+
+        result = extract_text(
+            file_path=None,
+            file_bytes=file_bytes,
+            filename="test.docx",
+        )
+
+        # Verificar ordem: Parágrafo 1 antes da tabela, tabela antes do Parágrafo 2
+        idx_p1 = result.index("Parágrafo 1")
+        idx_table = result.index("| Header |")
+        idx_p2 = result.index("Parágrafo 2")
+        assert idx_p1 < idx_table < idx_p2
+
 
 class TestExtractPDF:
     def test_pdf_extraction(self):
@@ -97,3 +163,154 @@ class TestExtractPDF:
 
         assert "Texto do PDF" in result
         assert "Segundo parágrafo" in result
+
+
+class TestFooterDetection:
+    def test_cep_pattern(self):
+        assert _is_footer_text("Rua 14, Goiânia/GO, CEP 74810-180")
+
+    def test_phone_pattern(self):
+        assert _is_footer_text("Tel: (62) 3333-4444")
+
+    def test_page_pattern(self):
+        assert _is_footer_text("Página 15")
+
+    def test_pag_pattern(self):
+        assert _is_footer_text("Pág. 3")
+
+    def test_email_pattern(self):
+        assert _is_footer_text("contato@escritorio.com.br")
+
+    def test_normal_text_not_footer(self):
+        assert not _is_footer_text("O autor alega que sofreu danos morais.")
+
+
+class TestTableToMarkdown:
+    def test_docx_table_to_markdown(self):
+        """Testa conversão de tabela DOCX para Markdown."""
+        from docx import Document
+
+        doc = Document()
+        table = doc.add_table(rows=2, cols=2)
+        table.cell(0, 0).text = "Col1"
+        table.cell(0, 1).text = "Col2"
+        table.cell(1, 0).text = "A"
+        table.cell(1, 1).text = "B"
+
+        result = _docx_table_to_markdown(table)
+        assert "| Col1 | Col2 |" in result
+        assert "| --- | --- |" in result
+        assert "| A | B |" in result
+
+
+class TestDocxInlineFormatting:
+    """F1: Preservar formatação inline (bold/italic) na extração DOCX."""
+
+    def _make_docx_with_runs(self, runs_spec):
+        """Helper: cria DOCX com runs especificados.
+
+        runs_spec: lista de (text, bold, italic)
+        """
+        import io
+        from docx import Document
+
+        doc = Document()
+        para = doc.add_paragraph()
+        for text, bold, italic in runs_spec:
+            run = para.add_run(text)
+            run.bold = bold
+            run.italic = italic
+
+        buf = io.BytesIO()
+        doc.save(buf)
+        return buf.getvalue()
+
+    def test_bold_preserved(self):
+        docx_bytes = self._make_docx_with_runs([
+            ("Nome: ", False, False),
+            ("JOÃO DA SILVA", True, False),
+            (", brasileiro.", False, False),
+        ])
+        result = extract_text(file_bytes=docx_bytes, filename="test.docx",
+                              preserve_inline_formatting=True)
+        assert "**JOÃO DA SILVA**" in result
+
+    def test_italic_preserved(self):
+        docx_bytes = self._make_docx_with_runs([
+            ("Conforme ", False, False),
+            ("in dubio pro reo", False, True),
+            (".", False, False),
+        ])
+        result = extract_text(file_bytes=docx_bytes, filename="test.docx",
+                              preserve_inline_formatting=True)
+        assert "*in dubio pro reo*" in result
+
+    def test_bold_italic_preserved(self):
+        docx_bytes = self._make_docx_with_runs([
+            ("Texto ", False, False),
+            ("muito importante", True, True),
+            (".", False, False),
+        ])
+        result = extract_text(file_bytes=docx_bytes, filename="test.docx",
+                              preserve_inline_formatting=True)
+        assert "***muito importante***" in result
+
+    def test_formatting_disabled(self):
+        docx_bytes = self._make_docx_with_runs([
+            ("Nome: ", False, False),
+            ("JOÃO DA SILVA", True, False),
+        ])
+        result = extract_text(file_bytes=docx_bytes, filename="test.docx",
+                              preserve_inline_formatting=False)
+        assert "**" not in result
+        assert "JOÃO DA SILVA" in result
+
+    def test_heading_no_inline_formatting(self):
+        """Headings não devem ter bold/italic inline (redundante com #)."""
+        import io
+        from docx import Document
+
+        doc = Document()
+        heading = doc.add_heading("", level=1)
+        run = heading.add_run("Título Bold")
+        run.bold = True
+        doc.add_paragraph("Texto normal.")
+
+        buf = io.BytesIO()
+        doc.save(buf)
+
+        result = extract_text(file_bytes=buf.getvalue(), filename="test.docx",
+                              preserve_inline_formatting=True)
+        assert "# Título Bold" in result
+        assert "# **" not in result
+
+    def test_mixed_runs(self):
+        docx_bytes = self._make_docx_with_runs([
+            ("O réu ", False, False),
+            ("BANCO DO BRASIL S.A.", True, False),
+            (" deve pagar ", False, False),
+            ("indenização", False, True),
+            (".", False, False),
+        ])
+        result = extract_text(file_bytes=docx_bytes, filename="test.docx",
+                              preserve_inline_formatting=True)
+        assert "**BANCO DO BRASIL S.A.**" in result
+        assert "*indenização*" in result
+
+
+class TestDocxDoubleSpaces:
+    """Bug 4: Double spaces in DOCX headings should be normalized."""
+
+    def test_heading_double_space_normalized(self):
+        import io
+        from docx import Document
+
+        doc = Document()
+        doc.add_heading("DA  VARA  CÍVEL", level=2)
+        doc.add_paragraph("Texto normal.")
+        buf = io.BytesIO()
+        doc.save(buf)
+
+        result = extract_text(file_bytes=buf.getvalue(), filename="test.docx")
+        assert "DA VARA CÍVEL" in result
+        assert "DA  VARA" not in result
