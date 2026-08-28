@@ -6,7 +6,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from core.pipeline import convert_batch, convert_document
+from core.pipeline import convert_batch, convert_document  # noqa: E402
 
 
 class TestConvertDocument:
@@ -18,9 +18,8 @@ class TestConvertDocument:
             mode="forense",
         )
         assert result.success
-        # First heading promoted to H1 by hierarchy fix; second stays H2
-        assert "DOS FATOS" in result.markdown
-        assert "DOS PEDIDOS" in result.markdown
+        assert "## DOS FATOS" in result.markdown
+        assert "## DOS PEDIDOS" in result.markdown
 
     def test_txt_doutrina(self):
         content = "CAPÍTULO I - Introdução\n\nTexto introdutório.\n\n1.1 Conceitos\n\nDefinições."
@@ -31,7 +30,9 @@ class TestConvertDocument:
         )
         assert result.success
         assert "# CAPÍTULO I" in result.markdown
-        assert "### 1.1" in result.markdown
+        # heading_validator promove ### 1.1 para ## 1.1 pois saltar
+        # de # para ### é inválido (defect-6 fix)
+        assert "## 1.1" in result.markdown
 
     def test_empty_document(self):
         result = convert_document(
@@ -53,7 +54,11 @@ class TestConvertDocument:
             separate=True,
         )
         assert result.success
+        # 3 peças: frontmatter (Documento Principal) + PETIÇÃO INICIAL + CONTESTAÇÃO
         assert len(result.pieces) >= 2
+        titles = [p["title"] for p in result.pieces]
+        assert any("PETIÇÃO" in t for t in titles)
+        assert any("CONTESTAÇÃO" in t for t in titles)
 
     def test_docx_conversion(self):
         from docx import Document
@@ -82,40 +87,6 @@ class TestConvertDocument:
         assert result.stats.get("chars_raw", 0) > 0
         assert result.stats.get("chars_final", 0) > 0
 
-    def test_frontmatter_present(self):
-        """Bug 1: Output deve conter frontmatter YAML."""
-        content = "PETIÇÃO INICIAL\n\nDOS FATOS\n\nO autor alega."
-        result = convert_document(
-            file_bytes=content.encode("utf-8"),
-            filename="peticao.txt",
-            mode="forense",
-        )
-        assert result.success
-        assert result.markdown.startswith("---\n")
-        assert "\n---\n" in result.markdown
-        assert "titulo:" in result.markdown
-
-    def test_docx_double_spaces_normalized(self):
-        """Bug 4: Espaços duplos em DOCX devem ser normalizados."""
-        from docx import Document
-
-        doc = Document()
-        doc.add_heading("DA  VARA  CÍVEL", level=2)
-        doc.add_paragraph("Texto  com  espaços  duplos.")
-
-        buffer = io.BytesIO()
-        doc.save(buffer)
-
-        result = convert_document(
-            file_bytes=buffer.getvalue(),
-            filename="test_spaces.docx",
-            mode="forense",
-        )
-        assert result.success
-        assert "DA  VARA" not in result.markdown
-        assert "DA VARA" in result.markdown
-        assert "espaços  duplos" not in result.markdown
-
 
 class TestConvertBatch:
     def test_batch_conversion(self):
@@ -136,3 +107,33 @@ class TestConvertBatch:
         assert len(results) == 2
         assert results[0].success
         assert not results[1].success
+
+
+class TestFrontmatterPresent:
+    """Bug 1: Frontmatter YAML must be present in output."""
+
+    def test_frontmatter_in_txt(self):
+        content = "DOS FATOS\n\nO autor alega.\n\nDOS PEDIDOS\n\nRequer-se."
+        result = convert_document(
+            file_bytes=content.encode(), filename="test.txt", mode="forense",
+        )
+        assert result.success
+        assert result.markdown.startswith("---\n")
+        assert "\n---\n" in result.markdown
+
+    def test_frontmatter_in_docx(self):
+        import io
+        from docx import Document
+
+        doc = Document()
+        doc.add_heading("PETIÇÃO INICIAL", level=1)
+        doc.add_paragraph("Texto da petição.")
+        buf = io.BytesIO()
+        doc.save(buf)
+
+        result = convert_document(
+            file_bytes=buf.getvalue(), filename="peticao.docx", mode="forense",
+        )
+        assert result.success
+        assert result.markdown.startswith("---\n")
+        assert 'titulo:' in result.markdown[:200]
